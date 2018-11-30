@@ -1,30 +1,114 @@
-import matplotlib.pyplot as plt
-import rasterio as rio
-from rasterio.plot import plotting_extent
-from rasterio.mask import mask
-from shapely.geometry import mapping
-import geopandas as gpd
+#def crop_mask_reproj( names, etc):
+   ## loads .shp shapefile and .jp2 sentinel-2 scene(in epsg:32632), crops file and
 
+import rasterio
+from rasterio.mask import mask
+from rasterio.warp import calculate_default_transform, reproject, Resampling
+import fiona
 
 ### files:
 
 # manually converted tp shp file with QGIS
-cloud_file = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\S2A_MSIL2A_20180803T103021_N0208_R108_T32TLS_20180803T151712.SAFE\clouds.shp"
-scene_file = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\S2A_MSIL2A_20180803T103021_N0208_R108_T32TLS_20180803T151712.SAFE\GRANULE\L2A_T32TLS_A016264_20180803T103239\IMG_DATA\R10m\T32TLS_20180803T103021_B08_10m.jp2"
+cloud_file = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\S2B_MSIL2A_20181017T103019_N0209_R108_T32TMS_20181017T152001.SAFE\clouds.shp"
+scene_file = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\S2B_MSIL2A_20181017T103019_N0209_R108_T32TMS_20181017T152001.SAFE\GRANULE\L2A_T32TMS_A008428_20181017T103202\IMG_DATA\R10m\T32TMS_20181017T103019_B08_10m.jp2"
+glacier_file = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\R20180321_1500\Gletscher_TLMNRelease_Edit.shp"
+#########################
+#  1. Open cloud mask:
+########################
+
+with fiona.open(cloud_file, "r") as cloud_mask:
+    features = [feature["geometry"] for feature in cloud_mask]
 
 
-##### Open cloud mask:
-cloud_mask = gpd.read_file(cloud_file)
-print(cloud_mask.crs)
-    # Change crs of cloud mask
-cloud_mask = cloud_mask.to_crs({'init' :'epsg:4326'})
-print(cloud_mask.crs)
+##########################
+#   2.  Open scene file
+##########################
+with rasterio.open(scene_file) as src:
+    ######   Apply mask
+    out_image, out_transform = rasterio.mask.mask(src, features,
+                                                        invert=True)
+    out_meta = src.meta.copy()
+    out_meta.update({"driver": "GTiff",
+                     "height": out_image.shape[1],
+                     "width": out_image.shape[2],
+                     "transform": out_transform})
 
-    # create geojson object from the shapefile to with for mask function
-clouds_geojson = mapping(cloud_mask['geometry'][0])
-clouds_geojson
+    #######  Reproject
+    dst_crs = 'EPSG:4326'
+    print('CRS of Scene file:', src.crs, '...now reprojecting to WGS 84')
+    dst_transform, width, height = calculate_default_transform(
+       src.crs, dst_crs, out_image.shape[1], out_image.shape[2], *src.bounds)
+    kwargs = out_meta
+    kwargs.update({
+         'crs': dst_crs,
+         'transform': dst_transform,
+         'width': width,
+         'height': height
+     })
+    with rasterio.open('reprojected_and_cropped_scene_file.tif', 'w', **kwargs) as dst:
+     #############################################################
+     ####
+     ####    Issues: combining projecting and cropping in one open comman (when first cropping then reprojecting it has problems to open the .tif of the clipped image.
+     ####     Otherwise not sure wichinput parameters for reproject fct, especially for source = out_image??
+     ####
+     ####
+     #############################################################
+            reproject(
+                source=out_image,
+                destination=rasterio.band(dst, 1),
+                src_transform=out_transform,
+                src_crs=src.crs,
+                dst_transform=dst_transform,
+                dst_crs=dst_crs,
+                resampling=Resampling.nearest)
+            print('New CRS of Scene file;', dst.crs)
+    #####  Write reprojected and cropped image to .tif file
+            dst.write(out_image)
 
-##### Open scene file:
-with rio.open(scene_file) as src:
-    print(src.crs)
-    src_crop, src_crop_affine = mask(src, [clouds_geojson],invert=True)
+
+#####  Plot results:
+#    img = mpimg.imread('reprojected_and_cropped_scene_file.tif')
+#    imgplot = plt.imshow(img)
+#    plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+# # #
+# # ###### Reload scene file and reproject to WGS84 :
+# # #
+# dst_crs = 'EPSG:4326'
+#
+#
+# with rasterio.open('only_cropped.tif') as src:
+#     print('CRS of Scene file:', src.crs, '...now reprojecting to WGS 84')
+#     dst_transform, width, height = calculate_default_transform(
+#        src.crs, dst_crs, src.width, src.height, *src.bounds)
+#     kwargs = src.meta.copy()
+#     kwargs.update({
+#          'crs': dst_crs,
+#          'transform': dst_transform,
+#          'width': width,
+#          'height': height
+#      })
+#     with rasterio.open('reprojected_and_cropped_scene_file.tif', 'w', **kwargs) as dst:
+#         for i in range(1, src.count + 1):
+#             reproject(
+#                 source=rasterio.band(src, i),
+#                 destination=rasterio.band(dst, i),
+#                 src_transform=src.transform,
+#                 src_crs=src.crs,
+#                 dst_transform=dst_transform,
+#                 dst_crs=dst_crs,
+#                 resampling=Resampling.nearest)
+#         print('New CRS of Scene file;', dst.crs)
+#     #####  Write reprojected and cropped image to .tif file
+#
