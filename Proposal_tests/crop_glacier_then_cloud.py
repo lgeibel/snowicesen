@@ -1,5 +1,4 @@
-#####   Project Glacier file to WGS 32, crop from scene file, save in WGS 32, crop cloud file from
-
+#####   Project Glacier file to UTM 32, crop glacier from scene file, save in UTM 32, crop cloud file from result, safe as TIF, Plot
 import rasterio
 from rasterio.mask import mask
 from rasterio.warp import calculate_default_transform, reproject, Resampling
@@ -10,18 +9,20 @@ import matplotlib.image as mpimg
 
 
 # Input files:   Notes: scene and cloud file are in 32632, glacier file in Swiss CS, EPSG:21781 - CH1903 / LV03 --> code needs to be adjusted when using diferent input
-scene_file = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\S2B_MSIL2A_20181017T103019_N0209_R108_T32TMS_20181017T152001.SAFE\GRANULE\L2A_T32TMS_A008428_20181017T103202\IMG_DATA\R10m\T32TMS_20181017T103019_B08_10m.jp2"
+
+# for different bands loop. band needded: b2, b3, b4, b8, b11, b12 --> Resolution? 10 m for everything but 20 m for 11, 12.  For knap we only need b3, b8
+band = '08'
+scene_file = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\S2B_MSIL2A_20181017T103019_N0209_R108_T32TMS_20181017T152001.SAFE\GRANULE\L2A_T32TMS_A008428_20181017T103202\IMG_DATA\R10m\T32TMS_20181017T103019_B"+band+"_10m.jp2"
+print(scene_file)
 cloud_file = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\S2B_MSIL2A_20181017T103019_N0209_R108_T32TMS_20181017T152001.SAFE\clouds.shp"  # Manually converted from  .gml to shp in
 
 glacier_file = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\R20180321_1500\Gletscher_TLMNRelease_Edit.shp"     # 2018 (?)
 glacier_file = r'C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\SGI_2008\SGI2010.shp'                              # 2010
 
-
 # Outout files
-glacier_reprojected_file = r'C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\output\glacier_mask_reprojected_32632.shp'
-glacier_cropped_scene_file = r'C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\output\glacier_cropped_scene_file_32632.tif'
-glacier_cloud_cropped_scene_file = r'C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\output\glacier_cloud_cropped_scene_file.tif'   # Final output in WGS84
-
+glacier_reprojected_file = r'C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\output\glacier_mask_reprojected_32632_B'+band+'.shp'
+glacier_cropped_scene_file = r'C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\output\glacier_cropped_scene_file_32632_B'+band+'.tif'
+glacier_cloud_cropped_scene_file = r'C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data\Test 1\output\glacier_cloud_cropped_scene_file_B'+band+'.tif'   # Final output in WGS84
 
 ###############################
 #    1. Load glacier outlines (.shp file)
@@ -31,6 +32,7 @@ print('Loading glacier outlines...')
 ######   Reproject glacier file from swiss to 32632, write to glacier_mask_reprojected.shp
 glacier_mask = geopandas.read_file(glacier_file)
 print('Original Glacier mask crs:',glacier_mask.crs)
+glacier_mask.crs = {'init' :'epsg:21781'}
 glacier_mask = glacier_mask.to_crs({'init': 'epsg:32632'})
 print('Reprojected  glacier mask crs',glacier_mask.crs)
 glacier_mask.to_file(driver='ESRI Shapefile',filename=glacier_reprojected_file)
