@@ -1,0 +1,2 @@
+2019-02-20T18:19:33;define_glacier_region_crampon;KeyError: 'grid_dx_method'
+2019-02-20T18:19:33;glacier_masks;RasterioIOError: C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\sandbox\Vierzack_copy\SWISS\per_glacier\RGI50-11\RGI50-11.C1\RGI50-11.C1410\dem.tif: No such file or directory
