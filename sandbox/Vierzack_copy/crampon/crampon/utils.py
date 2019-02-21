@@ -1278,7 +1278,6 @@ def get_zones_from_worksheet(worksheet, id_col, gdir=None, shape=None,
     # zones might be duplicates if the glacier shape is 'winding'
     return np.unique(res_is[id_col].tolist())
 
-
 def mount_network_drive(path, user, log=None):
     """
     Mount a network drive.
@@ -1313,6 +1312,7 @@ def mount_network_drive(path, user, log=None):
         log.info(msg) if log else print(msg)
     else:
         msg = 'Network drive {} connection failed'.format(path)
+        print("in utils.py mount_network_drive. Where do I call this module?")
         log.warn(msg) if log else print(msg)
 
     return out
@@ -1425,101 +1425,6 @@ def get_local_dems(gdir):
     .. [1] http://xarray.pydata.org/en/stable/auto_gallery/plot_rasterio.html#recipes-rasterio
     """
 
-    # get forest inventory DEMs (quite hard-coded for the LFI file names)
-    out = mount_network_drive(cfg.PATHS['lfi_dir'], r'wsl\landmann', log=log)
-
-    # neither os nor pathlib works, so quick'n'dirty:
-    lfi_dem_list = glob.glob(cfg.PATHS['lfi_dir']+'/TIFF/*.tif')
-
-    if not lfi_dem_list:
-        raise FileNotFoundError('National Forest Inventory DEMs not found!')
-
-    # exactly one file name is broken:
-    broke_months = ['ADS_103221_672000_165000_2011_0_0_86_50.tif']
-    lfi_dem_list = [x for x in lfi_dem_list if not broke_months[0] in x]
-
-    zones = get_zones_from_worksheet(cfg.PATHS['lfi_worksheet'], 'CLNR',
-                                     gdir=gdir)
-
-    # 'common' DEMs for this glacier (all years!)
-    cdems = []
-    for z in zones:
-        plist = [x for x in lfi_dem_list if 'ADS_{}'.format(z) in x]
-        cdems.extend(plist)
-
-    # check the common dates for all zones
-    cdates = [dt.datetime(int(os.path.basename(x).split('_')[4]),
-                          int(os.path.basename(x).split('_')[5]),
-                          int(os.path.basename(x).split('_')[6])) for
-              x in cdems]
-    cdates = np.unique(cdates)
-    cyears = np.unique([d.year for d in cdates])
-
-    # get already the dx to which the DEMs should be interpolated later on
-    dx = dx_from_area(gdir.area_km2)
-
-    lfi_all = []
-    for cd in cyears:
-        log.info('Assembling LFI DEMs for {} in {}'.format(gdir.rgi_id, cd))
-
-        lfi_to_merge = [c for c in cdems if '_{}_'.format(str(cd)) in c]
-
-        # stupid check for overlapping resolutions: the bigger number wins
-        present_50 = np.sum(['50.tif' in c for c in lfi_to_merge])
-        present_25 = np.sum(['25.tif' in c for c in lfi_to_merge])
-        if present_50 > 0 and present_25 > 0:
-            if present_50 >= present_25:
-                lfi_to_merge = [i for i in lfi_to_merge if not '25.tif' in i]
-            else:
-                lfi_to_merge = [i for i in lfi_to_merge if '25.tif' in i]
-
-        # acquisition dates
-        lfi_dates = [dt.datetime(int(os.path.basename(x).split('_')[4]),
-                                 int(os.path.basename(x).split('_')[5]),
-                                 int(os.path.basename(x).split('_')[6]))
-                     for x in lfi_to_merge]
-        lfi_dates = np.unique(lfi_dates)
-
-        if len(lfi_dates) > 1:
-            log.info('Skipping year {} (has {} acquisition dates).'.format(
-                cd, len(lfi_dates)))
-            continue
-
-        # merge and append
-        lfi_dem = _local_dem_to_xr_dataset(lfi_to_merge, lfi_dates[0], dx)
-
-        # check holes: small => fill, large=> no fill. Check percentage of NaN
-        #checked = gis.dem_quality_check(lfi_dem)
-
-        #if checked:
-        lfi_all.append(lfi_dem)
-        #else:
-        #    log.info('Skipping DEM from {} (did not pass quality check)'
-        #             .format(lfi_dem.time))
-        #    continue
-
-    aligned = xr.align(*lfi_all, join='outer', exclude='time')
-    concat = xr.concat(aligned, dim='time')
-
-    concat.to_netcdf(path=gdir.get_filepath('dem_ts'), mode='w',
-                     group=cfg.NAMES['LFI'])
-
-    # get DHM25 DEMs
-    log.info('Assembling DHM25 DEM for {}'.format(gdir.rgi_id))
-    d_list = glob.glob(os.path.join(cfg.PATHS['dem_dir'],cfg.NAMES['DHM25'].upper() + '*','*.agr'))
-    d_ws_path = glob.glob(os.path.join(cfg.PATHS['dem_dir'], 'worksheets',
-                                       '*' + cfg.NAMES['DHM25'].upper() +
-                                       '*.shp'))
-    d_zones = get_zones_from_worksheet(d_ws_path[0], 'zone', gdir=gdir)
-    d_to_merge = []
-    for d_z in d_zones:
-        d_to_merge.extend([d for d in d_list if str(d_z) in d])
-    # TODO: Replace with real acquisition dates!
-    d_acq_dates = dt.datetime(1970, 1, 1)
-    d_dem = _local_dem_to_xr_dataset(d_to_merge, d_acq_dates, dx)
-    d_dem.to_netcdf(path=gdir.get_filepath('dem_ts'), mode='a',
-                    group=cfg.NAMES['DHM25'])
-
     # get SwissALTI3D DEMs
     log.info('Assembling SwissALTI3D DEM for {}'.format(gdir.rgi_id))
     a_list = glob.glob(os.path.join(cfg.PATHS['dem_dir'], '*' + cfg.NAMES['SWISSALTI2010'].upper()  + '*', '*.agr'))
@@ -1532,7 +1437,11 @@ def get_local_dems(gdir):
         a_to_merge.extend([d for d in a_list if str(a_z) in d])
     # TODO: Replace with real acquisition dates!
     a_acq_dates = dt.datetime(2010, 1, 1)
+
+    # get already the dx to which the DEMs should be interpolated later on
+    dx = dx_from_area(gdir.area_km2)
     a_dem = _local_dem_to_xr_dataset(a_to_merge, a_acq_dates, dx)
+    print("gdir.get_filepath('dem_ts')= ", gdir.get_filepath('dem_ts') )
     a_dem.to_netcdf(path=gdir.get_filepath('dem_ts'), mode='a',
                     group=cfg.NAMES['SWISSALTI2010'])
 
@@ -1568,9 +1477,7 @@ def dx_from_area(area_km2):
     dx: int
         Spatial resolution rounded to nearest integer.
     """
-    print("Here Error: In utils dx_from_area: Key Error in cfg.PARAMS['grid_dx_method'] because cfg.PARAMS = ", cfg.PARAMS,
-          ". Whate went wrong? In CH_params.cfg, 'grid_dx_method' is initialized as 'square'.",
-          "gets initialized properly in setup_file. Where doe sit get lost?")
+
     dxmethod = cfg.PARAMS['grid_dx_method']
 
     if dxmethod == 'linear':

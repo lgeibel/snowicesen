@@ -11,22 +11,20 @@ from crampon.workflow import execute_entity_task
 logging.basicConfig(format='%(asctime)s: %(name)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=logging.DEBUG)
 log = logging.getLogger(__name__)
 log.setLevel('DEBUG')
-if __name__ == '__main__':
 
-
-    cfg.initialize(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\sandbox\Vierzack_copy\CH_params.cfg")
-    print("cfg.initialize= ", cfg.PARAMS['grid_dx_method'])
-    cfg.PATHS['working_dir'] = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\sandbox\Vierzack_copy\SWISS"
-    #cfg.PATHS['dem_dir'] = '/scratch_net/vierzack03_second/geibell/crampon/data/DEM/'
+cfg.initialize(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\sandbox\Vierzack_copy\CH_params.cfg")
+cfg.PATHS['working_dir'] = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\sandbox\Vierzack_copy\SWISS"
+cfg.PATHS['dem_dir'] = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\DEM"
 
     # something new in OGGM that we are not yet able to handle
-    cfg.PARAMS['use_tar_shapefiles'] = False
+cfg.PARAMS['use_tar_shapefiles'] = False
 
-    cfg.PARAMS['continue_on_error'] = True
-    cfg.PARAMS['use_multiprocessing'] = True
-    cfg.PARAMS['mp_processes'] = 4
+cfg.PARAMS['continue_on_error'] = True
+cfg.PARAMS['use_multiprocessing'] = True
+cfg.PARAMS['mp_processes'] = 4
 
-    rgidf = gpd.read_file(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\sandbox\Vierzack_copy\crampon\data\rgi_copy.shp")
+if __name__ == '__main__':
+    rgidf = gpd.read_file(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\outlines\rgi_copy.shp")
 
     # Only keep those glaciers to have smaller dataset
     rgidf = rgidf[rgidf.RGIId.isin([
@@ -43,7 +41,6 @@ if __name__ == '__main__':
 
     #Go - initialize working directories
     gdirs = workflow.init_glacier_regions(rgidf, reset=True, force=True)
-
 
     utils.joblib_read_climate_crampon.clear()
     # Preprocessing tasks

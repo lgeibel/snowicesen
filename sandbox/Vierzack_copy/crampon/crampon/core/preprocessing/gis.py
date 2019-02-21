@@ -159,13 +159,7 @@ def define_glacier_region_crampon(gdir, entity=None, reset_dems=False):
     """
 
     area = gdir.area_km2
-    print("Here Error: In gis define_glacier region: dx_from_area: Key Error in cfg.PARAMS['grid_dx_method'] because cfg.PARAMS = ", cfg.PARAMS,
-          ". Whate went wrong? In CH_params.cfg, 'grid_dx_method' is initialized as 'square'.",
-          "gets initialized properly in setup_file. Where doe sit get lost?")
-    print(cfg.PATHS['working_dir'])
     dx = utils.dx_from_area(area)
-    print("We are here")
-
     log.debug('(%s) area %.2f km, dx=%.1f', gdir.id, area, dx)
 
     # Make a local glacier map
@@ -234,11 +228,16 @@ def define_glacier_region_crampon(gdir, entity=None, reset_dems=False):
                                "suppress this error.")
 
     # Open DEM
-    source = entity.DEM_SOURCE if hasattr(entity, 'DEM_SOURCE') else None
 
+    source = entity.DEM_SOURCE if hasattr(entity, 'DEM_SOURCE') else None
     if (not os.path.exists(gdir.get_filepath('dem_ts'))) or reset_dems:
         log.info('Assembling local DEMs for {}...'.format(gdir.id))
+        # Here: open Swiss Alti DEMs
+        print("Starting get_local_dems in gis.py define_glacier_region...")
+        print("dx = ", dx)
         utils.get_local_dems(gdir)
+        print("Finished get_local_dems")
+
 
     # Use Grid properties to create a transform (see rasterio cookbook)
     dst_transform = rasterio.transform.from_origin(

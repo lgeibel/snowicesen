@@ -1,2 +1,2 @@
-2019-02-20T18:56:38; define_glacier_region_crampon; KeyError; 'working_dir'
-2019-02-20T18:56:38; glacier_masks; RasterioIOError; C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\sandbox\Vierzack_copy\SWISS\per_glacier\RGI50-11\RGI50-11.B4\RGI50-11.B4504\dem.tif: No such file or directory
+2019-02-21T16:47:20; define_glacier_region_crampon; FileNotFoundError; [Errno 2] No such file or directory: b'C:\\Users\\Lea Geibel\\Documents\\ETH\\MASTERTHESIS\\snowicesat\\sandbox\\Vierzack_copy\\SWISS\\per_glacier\\RGI50-11\\RGI50-11.B4\\RGI50-11.B4504\\dem_ts.nc'
+2019-02-21T16:47:20; glacier_masks; RasterioIOError; C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\sandbox\Vierzack_copy\SWISS\per_glacier\RGI50-11\RGI50-11.B4\RGI50-11.B4504\dem.tif: No such file or directory
