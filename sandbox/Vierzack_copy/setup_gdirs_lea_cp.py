@@ -13,12 +13,12 @@ log = logging.getLogger(__name__)
 log.setLevel('DEBUG')
 
 cfg.initialize(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\sandbox\Vierzack_copy\CH_params.cfg")
-cfg.PATHS['working_dir'] = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\sandbox\Vierzack_copy\SWISS"
+cfg.PATHS['working_dir'] = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\SWISS"
 cfg.PATHS['dem_dir'] = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\DEM"
+
 
     # something new in OGGM that we are not yet able to handle
 cfg.PARAMS['use_tar_shapefiles'] = False
-
 cfg.PARAMS['continue_on_error'] = True
 cfg.PARAMS['use_multiprocessing'] = True
 cfg.PARAMS['mp_processes'] = 4
@@ -40,12 +40,13 @@ if __name__ == '__main__':
     log.info('Number of glaciers: {}'.format(len(rgidf)))
 
     #Go - initialize working directories
-    gdirs = workflow.init_glacier_regions(rgidf, reset=True, force=True)
+    gdirs = workflow.init_glacier_regions(rgidf, reset=False, force=False)
+    print("Done with init_glacier_regions")
 
-    utils.joblib_read_climate_crampon.clear()
+    # don't think I need this? utils.joblib_read_climate_crampon.clear()
     # Preprocessing tasks
     task_list = [
-    tasks.glacier_masks,
+    tasks.download_sentinel,
     ]
     for task in task_list:
             execute_entity_task(task, gdirs)

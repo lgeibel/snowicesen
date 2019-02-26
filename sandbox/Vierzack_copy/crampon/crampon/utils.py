@@ -33,7 +33,7 @@ from salem import lazy_property, read_shapefile
 from functools import partial, wraps
 from oggm.utils import *
 # Locals
-import crampon.cfg as cfg
+import snowicesat.cfg as cfg
 from pathlib import Path
 
 
@@ -1441,10 +1441,8 @@ def get_local_dems(gdir):
     # get already the dx to which the DEMs should be interpolated later on
     dx = dx_from_area(gdir.area_km2)
     a_dem = _local_dem_to_xr_dataset(a_to_merge, a_acq_dates, dx)
-    print("gdir.get_filepath('dem_ts')= ", gdir.get_filepath('dem_ts') )
-    a_dem.to_netcdf(path=gdir.get_filepath('dem_ts'), mode='a',
-                    group=cfg.NAMES['SWISSALTI2010'])
-
+    a_dem.to_netcdf(path=gdir.get_filepath('dem_ts'), mode='w',
+                   group=cfg.NAMES['SWISSALTI2010'])
 
 def get_cirrus_yesterday():
     """Check if data has already been delivered."""

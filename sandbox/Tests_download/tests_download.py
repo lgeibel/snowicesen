@@ -7,12 +7,25 @@ def search_download_sen2_data(user, password, area_polygon, datum, cloudcover, d
     from sentinelsat import SentinelAPI, read_geojson, geojson_to_wkt
     import zipfile
     import os
+    import geopandas as gpd
     # connect to API
     api = SentinelAPI(
     user,
     password,
     api_url="https://scihub.copernicus.eu/apihub/"
     )
+
+#### Test
+    outlines_geojson = gpd.read_file("outlines.shp")
+
+    # Avoid Fiona Bug https://github.com/Toblerity/Fiona/issues/438
+    try:
+        os.remove("outline.geojson")
+    except OSError:
+        pass
+    outlines_geojson.to_file("outline.geojson", driver="GeoJSON")
+    area_polygon = "outline.geojson"
+##### End test
 
     # Search for products matching query
     products = api.query(

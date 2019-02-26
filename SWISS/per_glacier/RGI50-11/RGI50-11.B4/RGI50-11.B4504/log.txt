@@ -1,0 +1,27 @@
+2019-02-26T18:11:52;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:11:52;download_sentinel;NameError: name 'bbox_filename' is not defined
+2019-02-26T18:12:20;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:12:20;download_sentinel;NameError: name 'bbox_filename' is not defined
+2019-02-26T18:16:45;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:16:45;download_sentinel;NameError: name 'lon_ex' is not defined
+2019-02-26T18:23:17;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:23:17;download_sentinel;SentinelAPIError: HTTP status 500 Internal Server Error: RemoteSolrException : Error from server at http://172.30.246.70:8983/solr/dhus: non ok status: 414, message:Request-URI Too Long
+2019-02-26T18:33:00;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:33:00;download_sentinel;NameError: name 'outline_envelope' is not defined
+2019-02-26T18:36:40;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:36:40;download_sentinel;AttributeError: 'GeoDataFrame' object has no attribute 'GetEnvelope'
+2019-02-26T18:37:17;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:37:17;download_sentinel;AttributeError: 'GeoSeries' object has no attribute 'GetEnvelope'
+2019-02-26T18:47:19;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:47:20;download_sentinel;SentinelAPIError: HTTP status 200 OK: Invalid query string. Check the parameters and format.
+2019-02-26T18:50:50;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:50:53;download_sentinel;SentinelAPIError: HTTP status 200 OK: Invalid query string. Check the parameters and format.
+2019-02-26T18:51:47;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:51:47;download_sentinel;SentinelAPIError: HTTP status 200 OK: Invalid query string. Check the parameters and format.
+2019-02-26T18:53:56;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:53:56;download_sentinel;SentinelAPIError: HTTP status 200 OK: Invalid query string. Check the parameters and format.
+2019-02-26T18:58:19;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T18:58:20;download_sentinel;SentinelAPIError: HTTP status 200 OK: Invalid query string. Check the parameters and format.
+2019-02-26T19:02:45;define_glacier_region_snowicesat;BadZipFile: File is not a zip file
+2019-02-26T19:02:45;download_sentinel;NameError: name 'lon_ex' is not defined
+2019-02-26T19:04:58;define_glacier_region_snowicesat;BadZipFile: File is not a zip file

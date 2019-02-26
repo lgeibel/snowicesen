@@ -8,9 +8,9 @@ created 18.02.2109
 # 1. Download / Data retrieval: #
 
 user          = "lgeibel"                # Sentinelhub user name
-password      = "12bananenBrote"        # Sentinelhub password
+password      = "snowicesat"        # Sentinelhub password
 
-area_polygon  = "map.geojson"        # geojson polygon of area of interest, created on geojson.io. Here: Swiss Alps
+area_polygon  = "bbox.geojson"        # geojson polygon of area of interest, created on geojson.io. Here: Swiss Alps
 datum         = ("20181001", "20181002") # date /time frame of interest, format ("20181001", "20181002")
 cloudcover    = "[0 TO 40]"          # cloud cover percentage of interest, format [0 TO 30]
 downloadpath  = r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\Data"

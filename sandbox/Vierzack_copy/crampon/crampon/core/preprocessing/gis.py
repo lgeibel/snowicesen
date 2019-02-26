@@ -14,6 +14,7 @@ from functools import partial
 import geopandas as gpd
 import shapely
 import salem
+from crampon.core.preprocessing.downloads_snowicesat import download_sentinel
 from oggm.core.gis import gaussian_blur, multi_to_poly,\
     _interp_polygon, _polygon_to_pix, define_glacier_region, glacier_masks
 from oggm.utils import get_topo_file
@@ -233,10 +234,7 @@ def define_glacier_region_crampon(gdir, entity=None, reset_dems=False):
     if (not os.path.exists(gdir.get_filepath('dem_ts'))) or reset_dems:
         log.info('Assembling local DEMs for {}...'.format(gdir.id))
         # Here: open Swiss Alti DEMs
-        print("Starting get_local_dems in gis.py define_glacier_region...")
-        print("dx = ", dx)
         utils.get_local_dems(gdir)
-        print("Finished get_local_dems")
 
 
     # Use Grid properties to create a transform (see rasterio cookbook)
@@ -297,7 +295,6 @@ def define_glacier_region_crampon(gdir, entity=None, reset_dems=False):
                        'width': nx,
                        'height': ny,
                        'tiled': False}
-
             base, ext = os.path.splitext(gdir.get_filepath('dem'))
             dem_reproj = base + str(t.item()) + ext
             with rasterio.open(dem_reproj, 'w', **profile) as dest:
@@ -323,6 +320,9 @@ def define_glacier_region_crampon(gdir, entity=None, reset_dems=False):
                 homo_dems.append(dst_array)
                 homo_dates.append(t.time.values)
 
+    #TODO: download sentinel:
+    download_sentinel((minlon, maxlon),(minlat, maxlat))
+
     # Stupid, but we need it until we are able to fill the whole galcier grid with valid DEM values/take care of NaNs
     # Open DEM
     source = entity.DEM_SOURCE if hasattr(entity,
@@ -332,6 +332,7 @@ def define_glacier_region_crampon(gdir, entity=None, reset_dems=False):
                                          rgi_region=gdir.rgi_region,
                                          rgi_subregion=gdir.rgi_subregion,
                                          source=source)
+
     log.debug('(%s) DEM source: %s', gdir.rgi_id, dem_source)
 
     # A glacier area can cover more than one tile:
@@ -435,3 +436,4 @@ def define_glacier_region_crampon(gdir, entity=None, reset_dems=False):
 
 # Important, overwrite OGGM function
 define_glacier_region = define_glacier_region_crampon
+

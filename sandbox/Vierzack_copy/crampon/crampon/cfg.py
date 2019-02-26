@@ -119,6 +119,8 @@ NAMES['DHM25'] = 'dhm25'
 NAMES['SWISSALTI2010'] = 'alti'
 NAMES['LFI'] = 'lfi'
 
+#
+
 
 def initialize(file=None):
     """Read the configuration file containing the run's parameters."""
@@ -172,19 +174,8 @@ def initialize(file=None):
     oggm_static_paths()
 
     oggmcfg.PATHS['dem_file'] = cp['dem_file']
-    oggmcfg.PATHS['hfile'] = cp['hfile']
-    oggmcfg.PATHS['climate_file'] = cp['climate_file']
-    oggmcfg.PATHS['climate_dir'] = cp['climate_dir']
-    oggmcfg.PATHS['lfi_worksheet'] = cp['lfi_worksheet']
-    oggmcfg.PATHS['firncore_dir'] = cp['firncore_dir']
-    oggmcfg.PATHS['lfi_dir'] = cp['lfi_dir']
+
     oggmcfg.PATHS['dem_dir'] = cp['dem_dir']
-    oggmcfg.PATHS['wgms_rgi_links'] = cp['wgms_rgi_links']
-    oggmcfg.PATHS['glathida_rgi_links'] = cp['glathida_rgi_links']
-    oggmcfg.PATHS['leclercq_rgi_links'] = cp['leclercq_rgi_links']
-    oggmcfg.PATHS['mb_dir'] = cp['mb_dir']
-    oggmcfg.PATHS['modelrun_backup_dir_1'] = cp['modelrun_backup_dir_1']
-    oggmcfg.PATHS['modelrun_backup_dir_2'] = cp['modelrun_backup_dir_2']
 
     # run params
     oggmcfg.PARAMS['run_period'] = [int(vk) for vk in cp.as_list('run_period')]
@@ -196,69 +187,25 @@ def initialize(file=None):
     # Some non-trivial params
     oggmcfg.PARAMS['grid_dx_method'] = cp['grid_dx_method']
     oggmcfg.PARAMS['topo_interp'] = cp['topo_interp']
-    oggmcfg.PARAMS['use_divides'] = cp.as_bool('use_divides')
-    oggmcfg.PARAMS['use_intersects'] = cp.as_bool('use_intersects')
-    oggmcfg.PARAMS['use_compression'] = cp.as_bool('use_compression')
-    oggmcfg.PARAMS['mpi_recv_buf_size'] = cp.as_int('mpi_recv_buf_size')
-    oggmcfg.PARAMS['use_multiple_flowlines'] = cp.as_bool('use_multiple_flowlines')
-    oggmcfg.PARAMS['optimize_thick'] = cp.as_bool('optimize_thick')
-    oggmcfg.PARAMS['filter_min_slope'] = cp.as_bool('filter_min_slope')
     oggmcfg.PARAMS['auto_skip_task'] = cp.as_bool('auto_skip_task')
     oggmcfg.PARAMS['run_mb_calibration'] = cp.as_bool('run_mb_calibration')
-
-    # Mass balance
-    oggmcfg.PARAMS['ratio_mu_snow_ice'] = cp['ratio_mu_snow_ice']
-
-    # Climate
-    oggmcfg.PARAMS['temp_use_local_gradient'] = cp.as_int(
-        'temp_use_local_gradient')
-    k = 'temp_local_gradient_bounds'
-    oggmcfg.PARAMS[k] = [float(vk) for vk in cp.as_list(k)]
-    oggmcfg.PARAMS['prcp_use_local_gradient'] = cp.as_int(
-        'prcp_use_local_gradient')
-    k = 'prcp_local_gradient_bounds'
-    oggmcfg.PARAMS[k] = [float(vk) for vk in cp.as_list(k)]
-    oggmcfg.PARAMS['precip_ratio_method'] = cp['precip_ratio_method']
-    k = 'tstar_search_window'
-    oggmcfg.PARAMS[k] = [int(vk) for vk in cp.as_list(k)]
-    oggmcfg.PARAMS['use_bias_for_run'] = cp.as_bool('use_bias_for_run')
-    _factor = cp['prcp_scaling_factor']
-    if _factor not in ['stddev', 'stddev_perglacier']:
-        _factor = cp.as_float('prcp_scaling_factor')
-    oggmcfg.PARAMS['prcp_scaling_factor'] = _factor
-
-    # Inversion
-    oggmcfg.PARAMS['invert_with_sliding'] = cp.as_bool('invert_with_sliding')
-    _k = 'optimize_inversion_params'
-    oggmcfg.PARAMS[_k] = cp.as_bool(_k)
-
-    # Flowline model
-    _k = 'use_optimized_inversion_params'
-    oggmcfg.PARAMS[_k] = cp.as_bool(_k)
 
     # Make sure we have a proper cache dir
     from oggm.utils import download_oggm_files
     download_oggm_files()
 
-    CPARAMS['bgday_hydro'] = cp.as_int('bgday_hydro')
-    CPARAMS['bgmon_hydro'] = cp.as_int('bgmon_hydro')
-
     # Delete non-floats
-    ltr = ['working_dir', 'dem_file', 'climate_file', 'climate_dir',
-           'wgms_rgi_links', 'glathida_rgi_links', 'firncore_dir', 'lfi_dir',
-           'lfi_worksheet', 'dem_dir', 'hfile', 'grid_dx_method',
-           'mp_processes', 'use_multiprocessing', 'use_divides',
+    ltr = ['working_dir', 'dem_file', 'dem_dir', 'grid_dx_method',
+           'mp_processes', 'use_multiprocessing',
            'temp_use_local_gradient', 'prcp_use_local_gradient',
-           'temp_local_gradient_bounds', 'mb_dir', 'modelrun_backup_dir_1',
-           'modelrun_backup_dir_2', 'prcp_local_gradient_bounds',
-           'precip_ratio_method', 'topo_interp', 'use_compression',
+           'temp_local_gradient_bounds', 'prcp_local_gradient_bounds',
+           'precip_ratio_method', 'topo_interp',
            'bed_shape', 'continue_on_error', 'use_optimized_inversion_params',
            'invert_with_sliding', 'optimize_inversion_params',
-           'use_multiple_flowlines', 'leclercq_rgi_links', 'optimize_thick',
-           'mpi_recv_buf_size', 'tstar_search_window', 'use_bias_for_run',
-           'run_period', 'prcp_scaling_factor', 'use_intersects',
-           'filter_min_slope', 'auto_skip_task', 'correct_for_neg_flux',
-           'problem_glaciers', 'bgmon_hydro', 'bgday_hydro',
+            'optimize_thick',
+            'tstar_search_window', 'use_bias_for_run',
+           'run_period', 'auto_skip_task', 'correct_for_neg_flux',
+           'problem_glaciers',
            'run_mb_calibration']
     for k in ltr:
         cp.pop(k, None)
