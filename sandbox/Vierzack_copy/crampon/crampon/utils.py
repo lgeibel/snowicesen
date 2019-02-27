@@ -352,7 +352,7 @@ def get_nash_sutcliffe_efficiency(simulated, observed):
 def parse_credentials_file(credfile=None):
     if credfile is None:
         credfile = os.path.join(os.path.abspath(os.path.dirname(
-            os.path.dirname(__file__))), '.credentials')
+            os.path.dirname(__file__))), 'snowicesat.credentials')
 
     try:
         cr = ConfigObj(credfile, file_error=True)
