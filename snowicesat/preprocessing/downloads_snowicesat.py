@@ -90,6 +90,8 @@ def crop_sentinel_to_glacier(gdir):
                 # Write to geotiff in cache
                 dst.write(out_image)
 
+                #TODO: remove all funny cropped.tif files
+
                 # Open with xarray into DataArray
             band_array = xarray.open_rasterio('cropped_reprojected_band.tif')
             band_array.attrs['pyproj_srs'] = band_array.crs

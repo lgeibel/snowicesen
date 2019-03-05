@@ -146,7 +146,9 @@ def get_sentinelsat_query(glacier):
     # Check if file already exists:
 
     # Merging downloaded tiles to Mosaic: read in all band tiles, merge spatially per band, write out each tile per band
-    # find all file that end with B01.jp2, B02.jp2, etc.
+    # find all files that end with B01.jp2, B02.jp2, etc.
+    # TODO: remove old cache files!
+
     s = time.time()
     # go Through all bands
     band_list = ["B{:02d}".format(i) for i in range(1, 13)]
@@ -173,5 +175,7 @@ def get_sentinelsat_query(glacier):
             with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache\mosaic'+str(cfg.PARAMS['date'][0])+band+'.tif'), "w", **out_meta) as dest:
                 print('Writing mosaic to file...', band)
                 dest.write(mosaic)
+
+        #TODO: delete .SAFE files for this date
         e = time.time()
         print(e - s)
