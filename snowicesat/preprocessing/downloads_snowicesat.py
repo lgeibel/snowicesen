@@ -23,7 +23,8 @@ log = logging.getLogger(__name__)
 def download_sentinel(gdir):
     """Creates Download request for Sentinel-2 images for a given date for an
     entry in the glacier directory,
-    TODO: reproject to local grid, cut to glacier extent, reproject to local grid write all bands into the GlacierDirectory folder
+    reproject to local grid, cut to glacier extent, reproject to local grid write all bands
+    into the GlacierDirectory folder as netcdf file
 
     Parameters
     ----------
@@ -32,11 +33,12 @@ def download_sentinel(gdir):
     -------
     sentinel_path: (list with path to the sentinel netcdf file)
     """
+    glacier = gpd.read_file(gdir.get_filepath('outlines'))
 
-    products, api = utils.get_sentinelsat_query(gdir)
+    products, api = utils.get_sentinelsat_query(glacier)
     # Check if data tile for given date has already been downloaded:
+    # TODO: What do we return if we have more than one tile?
     safe_name = next(iter(products.values()))['filename']
-    # TODO: What happens when glacier is on 2 tiles?
 
     if not os.path.isdir(os.path.join(cfg.PATHS['working_dir'], safe_name)):
        #  if not downloaded: downloading all products
@@ -49,16 +51,19 @@ def download_sentinel(gdir):
                 zip_file.extractall(cfg.PATHS['working_dir'])
         os.remove(download_zip[0][key]['path'])
 
+        # TODO: Extract from SAFE to
+
     else:
         print("Tile is downloaded already")
 
+    # Read glacier outline in local grid
+    glacier = gpd.read_file(gdir.get_filepath('outlines'))
     # 3. read bands from .SAFE directory
-          # access subfolder with bands
-    img_path = [x[0] for x in os.walk(os.path.join(cfg.PATHS['working_dir'], safe_name))][8]
-        # iterate over all bands:
+    # TODO: move into if-array so its only executed when new tile is downloaded
+    #utils.read_safe_to_cache(glacier, safe_name)
 
-    # Create netcdf file where I read entire tiles? See if its much smaller than jp2 files
-    utils.crop_sentinel_to_glacier(gdir, safe_name)
+    # Create netcdf file where I read entire tiles?
+    utils.crop_sentinel_to_glacier(glacier, gdir, safe_name)
 
 
 

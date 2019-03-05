@@ -190,7 +190,7 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
     tmp_grid = salem.Grid(proj=proj_out, nxny=(nx, ny), x0y0=(ulx, uly),
                           dxdy=(dx, -dx), pixel_ref='corner')
     minlon, maxlon, minlat, maxlat = tmp_grid.extent_in_crs(crs=salem.wgs84)
-    print(minlon, maxlon, minlat, maxlat)
+
     # save transformed geometry to disk
     entity = entity.copy()
     entity['geometry'] = geometry
@@ -204,6 +204,23 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
     if 'DEM_SOURCE' in towrite:
         del towrite['DEM_SOURCE']
     towrite.to_file(gdir.get_filepath('outlines'))
+
+#    # TODO: intersect outline.shp with TILE ID, create worksheet --> safe which glacier is on which tile --> safe in PARAMETER: TileID
+   # print('Testing get_zones_from_worksheet')
+    # similar to get_local_dems and get_zones_from_worksheet
+    w_gdf = gpd.read_file(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\sentinel_tiles\sentinel2_tiles_switzerland.shp")
+#    print(w_gdf['Name'].head())
+    w_gdf_2 = gpd.read_file(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\DEM\worksheets\worksheet_SWISSALTI3D_2010.shp")
+#    print(w_gdf_2['zone'].head())
+
+
+    gdf = gpd.read_file(gdir.get_filepath('outlines'))
+    gdf = gdf.to_crs(w_gdf.crs)
+    res_is = gpd.overlay(w_gdf, gdf, how='intersection')
+
+    # zones might be duplicates if the glacier shape is 'winding'
+    list_tile_id = np.unique(res_is['Name_1'].tolist())
+
 
     # TODO: crampon. This needs rework if it should work also for SGI
     # Also transform the intersects if necessary
@@ -229,10 +246,8 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
 
     # Open DEM
     source = entity.DEM_SOURCE if hasattr(entity, 'DEM_SOURCE') else None
-    print(gdir.get_filepath('dem_ts'))
     if (not os.path.exists(gdir.get_filepath('dem_ts'))) or reset_dems:
         log.info('Assembling local DEMs for {}...'.format(gdir.id))
-        print('in get_local_dems')
 
         # Here: open Swiss Alti DEMs
         utils.get_local_dems(gdir)
@@ -257,7 +272,6 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
     homo_dems = []
     homo_dates = []
     for demtype in dem_source_list:
-        print(demtype)
         try:
             data = xr.open_dataset(gdir.get_filepath('dem_ts'), group=demtype)
         except OSError:  # group not found
@@ -319,12 +333,6 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
 
                 homo_dems.append(dst_array)
                 homo_dates.append(t.time.values)
-
-    #TODO: download sentinel:
-
-    # Read outlines.shp to get projection of local grid, then project to UTM 32 grid of sentinel data:
-    #crop_sentinel_to_glacier()
-
 
     # Stupid, but we need it until we are able to fill the whole galcier grid with valid DEM values/take care of NaNs
     # Open DEM
@@ -434,6 +442,7 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
                                 'res': dx})
     homo_dem_ts = homo_dem_ts.sortby('time')
     homo_dem_ts.to_netcdf(gdir.get_filepath('homo_dem_ts'))
+
 
     #_ = get_geodetic_deltav(gdir)
 

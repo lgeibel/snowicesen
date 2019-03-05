@@ -86,14 +86,14 @@ CBASENAMES['homo_dem_ts'] = ('homo_dem_ts.nc', _doc)
 _doc = 'A time series of all available DEMs for the glacier, brought to the ' \
        'minimum common resolution.'
 CBASENAMES['dem_ts'] = ('dem_ts.nc', _doc)
-_doc = 'A netcdf file containing all sentinel bands for given times'
+_doc = 'A netcdf file containing all sentinel bands for given times for the glacier'
 CBASENAMES['sentinel'] =('sentinel.nc', _doc)
-
 
 
 
 CPARAMS['date'] = ['date']
 CPARAMS['cloudcover'] = ['cloudcover']
+CPARAMS['tile_id'] = ['']
 
 
 # some more standard names, for less hardcoding
