@@ -92,4 +92,4 @@ def download_all_tiles(rgidf):
     :return:
     """
     print("In download_all_tiles")
-    products, api = get_sentinelsat_query(rgidf)
+    get_sentinelsat_query(rgidf)
