@@ -83,14 +83,25 @@ def datetime_to_int(start_date, end_date):
 
     return date_int
 
-def get_sentinelsat_query(glacier):
+def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
     """
     Gets query/list of products for sentinelsat
     - Reads outlines into geodata frame
     - Transforms local to UTM 32 grid
     - create bounding box around outline (full outline to complex to be processed by server)
     - files request with sentinelsat package
-    :param: glacier: GeoDataFrame containing all GlacierOutlines
+    - downloads new data for given date if available
+    - unzip folder into .SAFE directory
+    - reads all tiles bandwise, merges them, writes into working_dir/cache as GeoTiff
+    :param:
+    glacier: GeoDataFrame containing all GlacierOutlines
+    clear_cache: boolean: clearing merged GeoTiff from previous step before starting new download, default: False
+    clear_safe:boolean:  deleting .SAFE directories after reading/merging tiles into Geotiffs, default: False
+
+    WARNING: downloading and merging is very tinme-consuming, so be careful what you detele. Tiles can be very big,
+    so storing too many tiles risks in running out of memory
+    :return: tiles_downloaded: how many tiles were downloaded for this date
+
     """
     # 1.  use sentinelsat package to request which tiles intersect with glacier outlines: create an api
     # Read credentials file:
@@ -102,6 +113,12 @@ def get_sentinelsat_query(glacier):
         cr['sentinel']['password'],
         api_url="https://scihub.copernicus.eu/apihub/")
 
+    # Create cache directory for this date:
+    if not os.path.exists(os.path.join(cfg.PATHS['working_dir'], 'cache\\' + str(cfg.PARAMS['date'][0]))):
+        print('creating new folder for this date')
+        os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache\\' + str(cfg.PARAMS['date'][0])))
+        os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache\\' + str(cfg.PARAMS['date'][0])+'\\mosaic'))
+
     # 2. Geodataframe containing all glaciers:
     # Reproject to  WGS 84 Grid for query:
     glacier = glacier.to_crs({'init': 'epsg:4326'})
@@ -109,7 +126,6 @@ def get_sentinelsat_query(glacier):
     bbox = glacier.envelope
 
     for index in bbox:
-    #TODO: adjust date
     # iterate over each item in the glacier list,
     # Search for products matching query
         products = api.query(area=index, #geojson_to_wkt(read_geojson(bbox_filename))
@@ -126,19 +142,21 @@ def get_sentinelsat_query(glacier):
                                              cloudcoverpercentage="[{} TO {}]".format(cfg.PARAMS['cloudcover'][0],cfg.PARAMS['cloudcover'][1])),
           ", Total size: ", api.get_products_size(products),
           "GB.")
-
+        tiles_downloaded = 0
         if not len(products) is 0: # If products are available, download them:
             product_id = list(products.keys())
+            tiles_downloaded += 1
+            print('Downloaded Tiles: ',tiles_downloaded)
             for index in product_id:
                 safe_name = products[index]['filename']
-                if not os.path.isdir(os.path.join(cfg.PATHS['working_dir'], safe_name)):
+                print(safe_name)
+                if not os.path.isdir(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])+safe_name)):
                     #  if not downloaded: downloading all products
-                    download_zip = api.download(index, directory_path=cfg.PATHS['working_dir'])
+                    download_zip = api.download(index, directory_path=os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])))
                     # Unzip files into .safe directory, delete .zip folder
-                    with zipfile.ZipFile(download_zip['path']) as zip_file:
-                        print(zip_file)
-                        zip_file.extractall(cfg.PATHS['working_dir'])
-                    os.remove(download_zip['path'])
+                    with zipfile.ZipFile(os.path.join(cfg.PATHS['working_dir']+'\cache\\'+str(cfg.PARAMS['date'][0]), download_zip['path'])) as zip_file:
+                        zip_file.extractall(cfg.PATHS['working_dir']+'\cache\\'+str(cfg.PARAMS['date'][0]))
+                    os.remove(os.path.join(cfg.PATHS['working_dir']+'\cache\\'+str(cfg.PARAMS['date'][0]), download_zip['path']))
                 else:
                     print("Tile is downloaded already")
 
@@ -147,35 +165,47 @@ def get_sentinelsat_query(glacier):
 
     # Merging downloaded tiles to Mosaic: read in all band tiles, merge spatially per band, write out each tile per band
     # find all files that end with B01.jp2, B02.jp2, etc.
-    # TODO: remove old cache files!
 
-    s = time.time()
     # go Through all bands
     band_list = ["B{:02d}".format(i) for i in range(1, 13)]
-    for band in band_list:
-        if not os.path.isfile(os.path.join(cfg.PATHS['working_dir'],'cache\mosaic'+str(cfg.PARAMS['date'][0])+band+'.tif')):
-            # list of filenames of same band in all .safe tiles
-            file_list = [filename for filename in glob.glob(cfg.PATHS['working_dir']+'/**/**/**/**/*'+band+'.jp2', recursive=False)]
+    if tiles_downloaded > 0:
+        if clear_cache:
+            print("Removing old merged tiles from cache")
+            tif_list = [filename for filename in glob.glob(cfg.PATHS['working_dir'] + 'cache\\'+str(cfg.PARAMS['date'][0])+'\mosaic\*.tif', recursive=False)]
+            for f in tif_list:
+                os.remove(f)
+        for band in band_list:
+            if not os.path.isfile(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])+'\\mosaic\\'+band+'.tif')):
+                if not os.path.exists(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0]))):
+                    os.makedirs(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])))
 
-            #create empty list for datafile
-            src_files_to_mosaic = []
-            # Open File, append to list
-            for fp in file_list:
-                src = rasterio.open(fp)
-                src_files_to_mosaic.append(src)
-            # Merge all tiles together
-            mosaic, out_trans = merge(src_files_to_mosaic)
-            #show(mosaic, cmap='terrain')
-            out_meta = src.meta.copy()
-            out_meta.update({"driver": "GTiff",
-                            "height": mosaic.shape[1],
-                            "width": mosaic.shape[2],
-                            "transform": out_trans,
-                            "crs": "+proj=utm +zone=35 +ellps=GRS80 +units=m +no_defs "})
-            with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache\mosaic'+str(cfg.PARAMS['date'][0])+band+'.tif'), "w", **out_meta) as dest:
-                print('Writing mosaic to file...', band)
-                dest.write(mosaic)
+                # list of filenames of same band if this date in all .safe tiles
+                file_list = [filename for filename in glob.glob(cfg.PATHS['working_dir']+'/cache/'+str(cfg.PARAMS['date'][0])+'/**/**/**/**/*'+band+'.jp2', recursive=False)]
 
-        #TODO: delete .SAFE files for this date
-        e = time.time()
-        print(e - s)
+                #create empty list for datafile
+                src_files_to_mosaic = []
+                # Open File, append to list
+                for fp in file_list:
+                    src = rasterio.open(fp)
+                    src_files_to_mosaic.append(src)
+                # Merge all tiles together
+                mosaic, out_trans = merge(src_files_to_mosaic)
+                #show(mosaic, cmap='terrain')
+                out_meta = src.meta.copy()
+                out_meta.update({"driver": "GTiff",
+                                "height": mosaic.shape[1],
+                                "width": mosaic.shape[2],
+                                "transform": out_trans,
+                                "crs": "+proj=utm +zone=35 +ellps=GRS80 +units=m +no_defs "})
+                with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])+'\\mosaic\\'+band+'.tif'), "w", **out_meta) as dest:
+                    print('Writing mosaic to file...', band)
+                    dest.write(mosaic)
+        if clear_safe:
+            print("Deleting downloaded .SAFE directories...")
+            safe_list = [filename for filename in glob.glob(cfg.PATHS['working_dir'] + '/cache/**/*.SAFE', recursive=False)]
+            for f in safe_list:
+                shutil.rmtree(f)
+
+
+
+    return tiles_downloaded

@@ -5,7 +5,6 @@ import logging
 import snowicesat.cfg as cfg
 from crampon import utils
 from snowicesat.preprocessing import gis
-from snowicesat.utils import get_sentinelsat_query
 #from crampon.core.preprocessing import gis
 import crampon
 from shutil import rmtree
@@ -82,14 +81,3 @@ def init_glacier_regions_snowicesat(shapedf=None, reset=False, force=False, all_
 
     return gdirs
 
-
-def download_all_tiles(rgidf):
-    """
-    - Downloads all sentinel-2 tiles for bbox around each polygon of the shapefile
-    - Unzips folder
-
-    :param rgidf: geodataframe containing all glacier polygons
-    :return:
-    """
-    print("In download_all_tiles")
-    get_sentinelsat_query(rgidf)
