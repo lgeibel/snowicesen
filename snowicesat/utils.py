@@ -19,6 +19,8 @@ from rasterio.merge import merge as merge_tool
 from rasterio.warp import transform as transform_tool
 
 from rasterio.merge import merge
+import xml.etree.ElementTree as ET
+from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio.plot import show
 import geopandas as gpd
 import shapely
@@ -34,7 +36,17 @@ from pathlib import Path
 from osgeo import ogr
 from datetime import datetime, timedelta
 from datetime import date
+from math import sqrt, cos, sin, tan, pi, asin, acos, atan, atan2, isnan
+import math
+import sys
+import re
+import os
+import struct
+import xml.etree.ElementTree as ET
+import numpy as np
+from osgeo import gdal
 
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
@@ -114,13 +126,13 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
         api_url="https://scihub.copernicus.eu/apihub/")
 
     # Create cache directory for this date:
-    if not os.path.exists(os.path.join(cfg.PATHS['working_dir'], 'cache\\' + str(cfg.PARAMS['date'][0]))):
+    if not os.path.exists(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]))):
         print('creating new folder for this date')
-        os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache\\' + str(cfg.PARAMS['date'][0])))
-        os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache\\' + str(cfg.PARAMS['date'][0])+'\\mosaic'))
+        os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0])))
+        os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]), 'mosaic'))
 
     # 2. Geodataframe containing all glaciers:
-    # Reproject to  WGS 84 Grid for query:
+    # Reproject to  WGS 84 Grid for query (requested by sentinelsat module):
     glacier = glacier.to_crs({'init': 'epsg:4326'})
     # Create bounding box/envelope as polygon, safe to geojson file
     bbox = glacier.envelope
@@ -150,13 +162,14 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
             for index in product_id:
                 safe_name = products[index]['filename']
                 print(safe_name)
-                if not os.path.isdir(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])+safe_name)):
+                if not os.path.isdir(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]), safe_name)):
                     #  if not downloaded: downloading all products
-                    download_zip = api.download(index, directory_path=os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])))
+                    print("exists:",os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]),safe_name))
+                    download_zip = api.download(index, directory_path=os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0])))
                     # Unzip files into .safe directory, delete .zip folder
-                    with zipfile.ZipFile(os.path.join(cfg.PATHS['working_dir']+'\cache\\'+str(cfg.PARAMS['date'][0]), download_zip['path'])) as zip_file:
-                        zip_file.extractall(cfg.PATHS['working_dir']+'\cache\\'+str(cfg.PARAMS['date'][0]))
-                    os.remove(os.path.join(cfg.PATHS['working_dir']+'\cache\\'+str(cfg.PARAMS['date'][0]), download_zip['path']))
+                    with zipfile.ZipFile(os.path.join(cfg.PATHS['working_dir'],'cache', str(cfg.PARAMS['date'][0]), download_zip['path'])) as zip_file:
+                        zip_file.extractall(os.path.join(cfg.PATHS['working_dir'],'cache', str(cfg.PARAMS['date'][0])))
+                    os.remove(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]), download_zip['path']))
                 else:
                     print("Tile is downloaded already")
 
@@ -171,16 +184,16 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
     if tiles_downloaded > 0:
         if clear_cache:
             print("Removing old merged tiles from cache")
-            tif_list = [filename for filename in glob.glob(cfg.PATHS['working_dir'] + 'cache\\'+str(cfg.PARAMS['date'][0])+'\mosaic\*.tif', recursive=False)]
+            tif_list = os.listdir(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]), 'mosaic'))
             for f in tif_list:
                 os.remove(f)
         for band in band_list:
-            if not os.path.isfile(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])+'\\mosaic\\'+band+'.tif')):
-                if not os.path.exists(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0]))):
-                    os.makedirs(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])))
+            if not os.path.isfile(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]),'mosaic', str(band+'.tif'))):
+                if not os.path.exists(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]))):
+                    os.makedirs(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0])))
 
-                # list of filenames of same band if this date in all .safe tiles
-                file_list = [filename for filename in glob.glob(cfg.PATHS['working_dir']+'/cache/'+str(cfg.PARAMS['date'][0])+'/**/**/**/**/*'+band+'.jp2', recursive=False)]
+                # list of filenames of same band of this date in all .safe tiles
+                file_list = [filename for filename in glob.glob(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]),'**','**','**','**',str('*'+band+'.jp2')), recursive=False)]
 
                 #create empty list for datafile
                 src_files_to_mosaic = []
@@ -195,11 +208,19 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                 out_meta.update({"driver": "GTiff",
                                 "height": mosaic.shape[1],
                                 "width": mosaic.shape[2],
-                                "transform": out_trans,
-                                "crs": "+proj=utm +zone=35 +ellps=GRS80 +units=m +no_defs "})
-                with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])+'\\mosaic\\'+band+'.tif'), "w", **out_meta) as dest:
+                                "transform": out_trans})
+#                                "crs": "+proj=utm +zone=35 +ellps=GRS80 +units=m +no_defs "})
+                with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]),'mosaic',str(band+'.tif')), "w", **out_meta) as dest:
                     print('Writing mosaic to file...', band)
                     dest.write(mosaic)
+
+        # Extract Metadata for Tile
+
+        meta_name = glob.glob(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]), '**', 'GRANULE', '**', 'MTD_TL.xml'), recursive=False)[0]
+        tile_id, Angle_obs = extract_metadata(meta_name)
+        print(tile_id)
+        print(Angle_obs)
+
         if clear_safe:
             print("Deleting downloaded .SAFE directories...")
             safe_list = [filename for filename in glob.glob(cfg.PATHS['working_dir'] + '/cache/**/*.SAFE', recursive=False)]
@@ -209,3 +230,171 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
 
 
     return tiles_downloaded
+
+def extract_metadata(XML_File):
+    """
+    Extracts solar zenith and azimuth angle from GRANULE/MTD_TL.xml metadata file of .safe directory
+    - main structure after s2a_angle_bands_mod.py module by
+    Sentinel-2 MultiSpectral Instrument (MSI) data processing for aquatic science applications: Demonstrations and validations
+    N.Pahlevan et al., Appendix B:
+    :param xml_file: :
+    :return: solar zenith angle
+    solar azimuth angle
+    """
+    # Parse the XML file
+    tree = ET.parse(XML_File)
+    root = tree.getroot()
+
+    # Find the angles
+    for child in root:
+        if child.tag[-12:] == 'General_Info':
+            geninfo = child
+        if child.tag[-14:] == 'Geometric_Info':
+            geoinfo = child
+
+    for segment in geninfo:
+        if segment.tag == 'TILE_ID':
+            tile_id = segment.text.strip()
+
+    for segment in geoinfo:
+        if segment.tag == 'Tile_Geocoding':
+            frame = segment
+        if segment.tag == 'Tile_Angles':
+            angles = segment
+
+    for box in frame:
+        if box.tag == 'HORIZONTAL_CS_NAME':
+            czone = box.text.strip()[-3:]
+            hemis = czone[-1:]
+            zone = int(czone[:-1])
+        if box.tag == 'Size' and box.attrib['resolution'] == '60':
+            for field in box:
+                if field.tag == 'NROWS':
+                    nrows = int(field.text)
+                if field.tag == 'NCOLS':
+                    ncols = int(field.text)
+        if box.tag == 'Geoposition' and box.attrib['resolution'] == '60':
+            for field in box:
+                if field.tag == 'ULX':
+                    ulx = float(field.text)
+                if field.tag == 'ULY':
+                    uly = float(field.text)
+    if hemis == 'S':
+        lzone = -zone
+    else:
+        lzone = zone
+    AngleObs = {'zone': zone, 'hemis': hemis, 'nrows': nrows, 'ncols': ncols, 'ul_x': ulx, 'ul_y': uly, 'obs': []}
+
+    for angle in angles:
+        if angle.tag == 'Viewing_Incidence_Angles_Grids':
+            bandId = int(angle.attrib['bandId'])
+            detectorId = int(angle.attrib['detectorId'])
+            for bset in angle:
+                if bset.tag == 'Zenith':
+                    zenith = bset
+                if bset.tag == 'Azimuth':
+                    azimuth = bset
+            for field in zenith:
+                if field.tag == 'COL_STEP':
+                    col_step = int(field.text)
+                if field.tag == 'ROW_STEP':
+                    row_step = int(field.text)
+                if field.tag == 'Values_List':
+                    zvallist = field
+            for field in azimuth:
+                if field.tag == 'Values_List':
+                    avallist = field
+            for rindex in range(len(zvallist)):
+                zvalrow = zvallist[rindex]
+                avalrow = avallist[rindex]
+                zvalues = zvalrow.text.split(' ')
+                avalues = avalrow.text.split(' ')
+                values = zip(zvalues, avalues)
+                ycoord = uly - rindex * row_step
+                id = 0
+                for cindex in values:
+                    print("Cindex",cindex)
+                    print(id)
+                    xcoord = ulx + id * col_step
+                    id = id+1
+                    (lat, lon) = utm_inv(lzone, xcoord, ycoord)
+                    if (cindex[0] != 'NaN' and cindex[1] != 'NaN'):
+                        todeg = 180.0 / pi  # Converts radians to degrees
+                        zen = float(cindex[0]) / todeg
+                        az = float(cindex[1]) / todeg
+                        (Sat, Gx) = LOSVec(lat, lon, zen, az)
+                        observe = [bandId, detectorId, xcoord, ycoord, Sat, Gx]
+                        AngleObs['obs'].append(observe)
+
+    return (tile_id, AngleObs)
+
+def utm_inv(Zone, X, Y, a=6378137.0, b=6356752.31414):
+    """ From s2a_angle_bands_mod.py module"""
+    if Zone < 0:
+        FNorth = 10000000.0  # Southern hemisphere False Northing
+    else:
+        FNorth = 0.0  # Northern hemisphere False Northing
+    FEast = 500000.0  # UTM False Easting
+    Scale = 0.9996  # Scale at CM (UTM parameter)
+    LatOrigin = 0.0  # Latitude origin (UTM parameter)
+    CMDeg = -177 + (abs(int(Zone)) - 1) * 6
+    CM = float(CMDeg) * pi / 180.0  # Central meridian (based on zone)
+    ecc = 1.0 - b / a * b / a
+    ep = ecc / (1.0 - ecc)
+    M0 = a * ((1.0 - ecc * (0.25 + ecc * (3.0 / 64.0 + ecc * 5.0 / 256.0))) * LatOrigin
+                 - ecc * (0.375 + ecc * (3.0 / 32.0 + ecc * 45.0 / 1024.0)) * sin(2.0 * LatOrigin)
+                  + ecc * ecc * (15.0 / 256.0 + ecc * 45.0 / 1024.0) * sin(4.0 * LatOrigin)
+                  - ecc * ecc * ecc * 35.0 / 3072.0 * sin(6.0 * LatOrigin))
+    M = M0 + (Y - FNorth) / Scale
+    Mu = M / (a * (1.0 - ecc * (0.25 + ecc * (3.0 / 64.0 + ecc * 5.0 / 256.0))))
+    e1 = (1.0 - sqrt(1 - ecc)) / (1.0 + sqrt(1.0 - ecc))
+    Phi1 = Mu + (e1 * (1.5 - 27.0 / 32.0 * e1 * e1) * sin(2.0 * Mu)
+                  + e1 * e1 * (21.0 / 16.0 - 55.0 / 32.0 * e1 * e1) * sin(4.0 * Mu)
+                     + 151.0 / 96.0 * e1 * e1 * e1 * sin(6.0 * Mu)
+                     + 1097.0 / 512.0 * e1 * e1 * e1 * e1 * sin(8.0 * Mu))
+    slat = sin(Phi1)
+    clat = cos(Phi1)
+    Rn1 = a / sqrt(1.0 - ecc * slat * slat)
+    T1 = slat * slat / clat / clat
+    C1 = ep * clat * clat
+    R1 = Rn1 * (1.0 - ecc) / (1.0 - ecc * slat * slat)
+    D = (X - FEast) / Rn1 / Scale
+      # Calculate Lat/Lon
+    Lat = Phi1 - (Rn1 * slat / clat / R1 * (D * D / 2.0
+                                                - (
+                                                            5.0 + 3.0 * T1 + 10.0 * C1 - 4.0 * C1 * C1 - 9.0 * ep) * D * D * D * D / 24.0
+                                                + (
+                                                            61.0 + 90.0 * T1 + 298.0 * C1 + 45.0 * T1 * T1 - 252.0 * ep - 3.0 * C1 * C1) * D * D * D * D * D * D / 720.0))
+    Lon = CM + (D - (1.0 + 2.0 * T1 + C1) * D * D * D / 6.0 + (
+                    5.0 - 2.0 * C1 + 28.0 * T1 - 3.0 * C1 * C1 + 8.0 * ep + 24.0 * T1 * T1)
+                    * D * D * D * D * D / 120.0) / clat
+
+    return (Lat, Lon)
+
+def LOSVec( Lat, Lon, Zen, Az ):
+    """ From s2a_angle_bands_mod.py module
+    :param Lat:
+    :param Lon:
+    :param Zen:
+    :param Az:
+    :return:
+    """
+    a = 6378137.0  # WGS 84 semi-major axis in meters
+    b = 6356752.314  # WGS 84 semi-minor axis in meters
+    ecc = 1.0 - b / a * b / a  # WGS 84 ellipsoid eccentricity
+    LSRx = ( -sin(Lon), cos(Lon), 0.0 )
+    LSRy = ( -sin(Lat)*cos(Lon), -sin(Lat)*sin(Lon), cos(Lat) )
+    LSRz = ( cos(Lat)*cos(Lon), cos(Lat)*sin(Lon), sin(Lat) )
+    LOS = ( sin(Zen)*sin(Az), sin(Zen)*cos(Az), cos(Zen) )
+    Sat = ( LOS[0]*LSRx[0] + LOS[1]*LSRy[0] + LOS[2]*LSRz[0],
+	        LOS[0]*LSRx[1] + LOS[1]*LSRy[1] + LOS[2]*LSRz[1],
+	        LOS[0]*LSRx[2] + LOS[1]*LSRy[2] + LOS[2]*LSRz[2] )
+    Rn = a / sqrt( 1.0 - ecc *sin(Lat)*sin(Lat))
+    Gx = ( Rn*cos(Lat)*cos(Lon),
+               Rn*cos(Lat)*sin(Lon),
+               Rn*(1-ecc)*sin(Lat) )
+    return (Sat, Gx)
+
+
+
+

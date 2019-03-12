@@ -35,7 +35,7 @@ def crop_sentinel_to_glacier(gdir):
     print("In crop_sentinel_to_glacier")
     glacier = gpd.read_file(gdir.get_filepath('outlines'))
     #img_path = [x[0] for x in os.walk(os.path.join(cfg.PATHS['working_dir'], filename))][8]
-    img_path = os.path.join(os.path.join(cfg.PATHS['working_dir'],'cache\\'+str(cfg.PARAMS['date'][0])+ '\mosaic'))
+    img_path = os.path.join(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]),'mosaic'))
 
     # Reproject to Sentinel-2 (UTM zone 32) Grid:
     local_crs = glacier.crs
@@ -45,13 +45,13 @@ def crop_sentinel_to_glacier(gdir):
     # Open outline in UTM zone 32 Grid
     s = time.time()
 
-    with fiona.open('outline_UTM32.shp', "r") as glacier_reprojected:
+    with fiona.open(os.path.join(cfg.PATHS['working_dir'],'outline_UTM32.shp'), "r") as glacier_reprojected:
         # Read local geometry
         features = [feature["geometry"] for feature in glacier_reprojected]
 
     # iterate over all bands
     b_sub = []
-    for band in os.listdir(img_path): # Ignore TCL band and band 08A
+    for band in os.listdir(img_path):
         with rasterio.open(os.path.join(img_path, band)) as src:
             #   Open Sentinel file: Apply glacier outline
             out_image, out_transform = rasterio.mask.mask(src, features,
@@ -91,22 +91,20 @@ def crop_sentinel_to_glacier(gdir):
 
                 #TODO: remove all funny cropped.tif files
 
-                # Open with xarray into DataArray
+            # Open with xarray into DataArray
             band_array = xarray.open_rasterio(os.path.join(cfg.PATHS['working_dir'],'cropped_reprojected_band.tif'))
             band_array.attrs['pyproj_srs'] = band_array.crs
-            b_sub.append(band_array.salem.subset(margin=0))
+            # write all bands into list b_sub:
+            b_sub.append(band_array)
                 #
 
-    # Merge all subbands to write into netcdf file!
+    # Merge all bands to write into netcdf file!
     all_bands = xr.concat(b_sub, dim='band')
     all_bands['band'] = list(range(len(b_sub)))
     all_bands.name = 'img_values'
 
     all_bands = all_bands.assign_coords(time=cfg.PARAMS['date'][0])
     all_bands = all_bands.expand_dims('time')
-
-    #TODO: Deal with different dates! Append new day to existing netcdf
-    #TODO: dimension as  unlimited? Think about form of date
 
     # check if netcdf file for this glacier already exists, create if not, append if exists
     if not os.path.isfile(gdir.get_filepath('sentinel')):
@@ -115,16 +113,18 @@ def crop_sentinel_to_glacier(gdir):
     else:
         print('Open existing file')
         existing = xr.open_dataset(gdir.get_filepath('sentinel'))
-        print("existing",existing)
-        print('Concat/Append to time dimension')
-        appended = xr.concat([existing, all_bands], dim='time')
-        print("Append=", appended)
-        #Write to file
-        print("Write to file")
-        appended.to_netcdf(gdir.get_filepath('sentinel'), 'a', format='NETCDF4', unlimited_dims={'time': True})
-        print("dims of appended = ", appended.dimensions)
+        # Convert all_bands from DataArray to Dataset
+        all_bands= all_bands.to_dataset(name = 'img_values')
+        if all_bands.time.values in existing.time.values:
+            print("date already exists, not writing again")
+        else:
+            print("New date, appending to netcdf...")
+            appended = xr.concat([existing, all_bands], dim='time')
+            existing.close()
+            #Write to file
+            appended.to_netcdf(gdir.get_filepath('sentinel'), 'w', format='NETCDF4', unlimited_dims={'time': True})
 
-    # TODO: something weird with crs...... not sure what? Check!
+    # TODO: Check if the result is actually ok ...
 
     e = time.time()
     print(e - s)
