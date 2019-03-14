@@ -4,8 +4,10 @@ from oggm.utils import *
 
 from configobj import ConfigObj, ConfigObjError
 from sentinelsat import SentinelAPI
+import rasterio
 from rasterio.mask import mask as riomask
 from rasterio.warp import calculate_default_transform, reproject, Resampling
+from rasterio import Affine
 import glob
 import time
 import rasterio
@@ -53,7 +55,7 @@ def crop_sentinel_to_glacier(gdir):
     b_sub = []
     for band in os.listdir(img_path):
         with rasterio.open(os.path.join(img_path, band)) as src:
-            #   Open Sentinel file: Apply glacier outline
+            # --- 1.   Open Sentinel file: CROP file to glacier outline
             out_image, out_transform = rasterio.mask.mask(src, features,
                                                               crop=True)
             out_meta = src.meta.copy()
@@ -66,7 +68,7 @@ def crop_sentinel_to_glacier(gdir):
             src.write(out_image)
         with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cropped_not_reprojected.tif'), 'r', **out_meta) as src:
 
-            # REPROJECT to local grid: we want to project out_image with out_meta to local crs of glacier
+            # ---  2. REPROJECT to local grid: we want to project out_image with out_meta to local crs of glacier
                 # Calculate Transform
             dst_transform, width, height = calculate_default_transform(
                     src.crs, local_crs, out_image.shape[1], out_image.shape[2], *src.bounds)
@@ -77,6 +79,7 @@ def crop_sentinel_to_glacier(gdir):
                     'width': width,
                     'height': height
                 })
+
             with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cropped_reprojected_band.tif'), 'w', **out_meta) as dst:
                 reproject(
                     source=out_image,
@@ -88,19 +91,58 @@ def crop_sentinel_to_glacier(gdir):
                     resampling=Resampling.nearest)
                 # Write to geotiff in cache
                 dst.write(out_image)
+        tile = rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cropped_reprojected_band.tif'))
+        print(tile.width, tile.height)
 
-                #TODO: remove all funny cropped.tif files
+        with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cropped_reprojected_band.tif')) as src:
+                # --- 3. RESAMPLE all bands to 10 Meter Resolution:
+            bands_60m = ['B01.tif', 'B09.tif','B10.tif'];
+            bands_20m = ['B05.tif','B06.tif','B07.tif','B11.tif','B12.tif']
+
+            if band in bands_60m or band in bands_20m:
+                print(band)
+                if band in bands_60m:
+                    res_factor=6
+                elif band in bands_20m:
+                    res_factor = 2
+                arr = src.read()
+                newarr = np.empty(shape=(arr.shape[0],  # same number of bands
+                                         round(arr.shape[1] * res_factor),
+                                         round(arr.shape[2] * res_factor)),  dtype = 'uint16')
+
+                # adjust the new affine transform to the smaller cell size
+                with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cropped_reprojected_resampled_band.tif'), 'w', **out_meta) as dst:
+                    aff = src.transform
+                    newaff = Affine(aff.a / res_factor, aff.b, aff.c,
+                                    aff.d, aff.e / res_factor, aff.f)
+
+                    reproject(source = arr, destination = newarr,
+                              src_transform=src.transform,
+                              dst_transform=newaff,
+                              src_crs=src.crs,
+                              dst_crs=src.crs,
+                              resampling=Resampling.nearest)
+                    dst.write(newarr)
+                # TODO: what on Earth is wrong with reprojection?
+            tile= rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cropped_reprojected_resampled_band.tif'))
+            print(tile.width, tile.height)
+
+
+               #TODO: remove all funny cropped.tif files
 
             # Open with xarray into DataArray
             band_array = xarray.open_rasterio(os.path.join(cfg.PATHS['working_dir'],'cropped_reprojected_band.tif'))
+
             band_array.attrs['pyproj_srs'] = band_array.crs
+            band_array.attrs['pyproj_srs'] = rasterio.crs.CRS.to_proj4(dst.crs)
+
+            #print(band_array.crs)
             # write all bands into list b_sub:
             b_sub.append(band_array)
-                #
 
     # Merge all bands to write into netcdf file!
     all_bands = xr.concat(b_sub, dim='band')
-    all_bands['band'] = list(range(len(b_sub)))
+    all_bands['band'] = list(range(1,len(b_sub)+1))
     all_bands.name = 'img_values'
 
     all_bands = all_bands.assign_coords(time=cfg.PARAMS['date'][0])
@@ -125,6 +167,8 @@ def crop_sentinel_to_glacier(gdir):
             appended.to_netcdf(gdir.get_filepath('sentinel'), 'w', format='NETCDF4', unlimited_dims={'time': True})
 
     # TODO: Check if the result is actually ok ...
+    # TODO: fix: resample all bands to 10 meter resolution
+    # TODO: what on earth is wrong?!?
 
     e = time.time()
     print(e - s)

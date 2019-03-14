@@ -217,9 +217,9 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
         # Extract Metadata for Tile
 
         meta_name = glob.glob(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]), '**', 'GRANULE', '**', 'MTD_TL.xml'), recursive=False)[0]
-        tile_id, Angle_obs = extract_metadata(meta_name)
-        print(tile_id)
-        print(Angle_obs)
+#        tile_id, Angle_obs = extract_metadata(meta_name)
+#        print(tile_id)
+#        print(Angle_obs)
 
         if clear_safe:
             print("Deleting downloaded .SAFE directories...")
@@ -286,9 +286,9 @@ def extract_metadata(XML_File):
     AngleObs = {'zone': zone, 'hemis': hemis, 'nrows': nrows, 'ncols': ncols, 'ul_x': ulx, 'ul_y': uly, 'obs': []}
 
     for angle in angles:
-        if angle.tag == 'Viewing_Incidence_Angles_Grids':
-            bandId = int(angle.attrib['bandId'])
-            detectorId = int(angle.attrib['detectorId'])
+        if angle.tag == 'Sun_Angles_Grids':
+#            bandId = int(angle.attrib['bandId'])
+#            detectorId = int(angle.attrib['detectorId'])
             for bset in angle:
                 if bset.tag == 'Zenith':
                     zenith = bset
@@ -307,26 +307,25 @@ def extract_metadata(XML_File):
             for rindex in range(len(zvallist)):
                 zvalrow = zvallist[rindex]
                 avalrow = avallist[rindex]
-                zvalues = zvalrow.text.split(' ')
-                avalues = avalrow.text.split(' ')
+                zvalues = float(zvalrow.text.split(' '))
+                avalues = float(avalrow.text.split(' '))
                 values = zip(zvalues, avalues)
                 ycoord = uly - rindex * row_step
                 id = 0
-                for cindex in values:
-                    print("Cindex",cindex)
-                    print(id)
+                for cindex in zvalues:
+                    #TODO: think about how to write 5x5 km values into a grid....
+                    # we have: xcoord, ycoord, zvalue (which form?) avalue...shouldn't be too tricky?
+#                    print("Cindex",cindex)
+#                    print(id)
                     xcoord = ulx + id * col_step
                     id = id+1
-                    (lat, lon) = utm_inv(lzone, xcoord, ycoord)
-                    if (cindex[0] != 'NaN' and cindex[1] != 'NaN'):
-                        todeg = 180.0 / pi  # Converts radians to degrees
-                        zen = float(cindex[0]) / todeg
-                        az = float(cindex[1]) / todeg
-                        (Sat, Gx) = LOSVec(lat, lon, zen, az)
-                        observe = [bandId, detectorId, xcoord, ycoord, Sat, Gx]
-                        AngleObs['obs'].append(observe)
+#                    (lat, lon) = utm_inv(lzone, xcoord, ycoord)
+                        #zen = float(cindex[0])
+                        #az = float(cindex[1])
+                       # observe = [xcoord, ycoord, Sat, Gx]
+                       # AngleObs['obs'].append(observe)
 
-    return (tile_id, AngleObs)
+    #return (AngleObs)
 
 def utm_inv(Zone, X, Y, a=6378137.0, b=6356752.31414):
     """ From s2a_angle_bands_mod.py module"""
