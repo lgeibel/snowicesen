@@ -69,7 +69,6 @@ def crop_sentinel_to_glacier(gdir):
                     as glacier_reprojected:
                 # Read local geometry
                 features = [feature["geometry"] for feature in glacier_reprojected]
-            print("We are here 1")
             # --- 1.   Open Sentinel file: CROP file to glacier outline
             out_image, out_transform = rasterio.mask.mask(src, features,
                                                               crop=True)
@@ -79,16 +78,15 @@ def crop_sentinel_to_glacier(gdir):
                                  "width": out_image.shape[2],
                                  "transform": out_transform})
 
-
         with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]),'cropped_cache'+band),'w', **out_meta) as src1:
             src1.write(out_image)
 
             # ---  2. REPROJECT to local grid: we want to project out_image with out_meta to local crs of glacier
                 # Calculate Transform
-            dst_transform, width, height = calculate_default_transform(
-                    src1.crs, local_crs, out_image.shape[1], out_image.shape[2], *src1.bounds)
+        dst_transform, width, height = calculate_default_transform(
+                src1.crs, local_crs, out_image.shape[1], out_image.shape[2], *src1.bounds)
 
-            out_meta.update({
+        out_meta.update({
                     'crs': local_crs,
                     'transform': dst_transform,
                     'width': width,
@@ -110,6 +108,7 @@ def crop_sentinel_to_glacier(gdir):
                     resampling=Resampling.nearest)
                 # Write to geotiff in cache
             src1.write(out_image)
+            print(out_meta)
 
             # --- 3. RESAMPLE all bands to 10 Meter Resolution:
         bands_60m = ['B01.tif', 'B09.tif','B10.tif']
@@ -126,10 +125,11 @@ def crop_sentinel_to_glacier(gdir):
            #         'w', **kwargs) as src1:
             #arr = src1.read()
             arr=out_image
-            kwargs = src1.meta
+            kwargs = out_meta
             newarr = np.empty(shape=(arr.shape[0],  # same number of bands
-                                     arr.shape[1] * res_factor,
-                                     arr.shape[2] * res_factor),  dtype = 'uint16')
+                                     round(arr.shape[1] * res_factor),
+                                     round(arr.shape[2] * res_factor)),  dtype = 'uint16')
+            print(newarr.shape)
 
                     # adjust the new affine transform to the smaller cell size
             old_transform = src1.transform
@@ -153,8 +153,8 @@ def crop_sentinel_to_glacier(gdir):
                     resampling=Resampling.nearest)
 
                 src1.write(newarr)
-            tile = rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]),'cropped_cache' + band))
-            print(tile.height, tile.crs)
+        tile = rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]),'cropped_cache' + band))
+        print(band, tile.height, tile.crs)
                #TODO: remove all funny cropped.tif files
 
             # Open with xarray into DataArray
