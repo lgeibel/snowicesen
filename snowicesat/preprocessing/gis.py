@@ -169,6 +169,7 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
     proj_in = pyproj.Proj("+init=EPSG:4326", preserve_units=True)
     proj_out = pyproj.Proj(proj4_str, preserve_units=True)
     project = partial(pyproj.transform, proj_in, proj_out)
+
     # TODO: crampon. Here single outlines should be transformed and their union used
     # for defining the grid
     # transform geometry to map
