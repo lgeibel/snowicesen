@@ -21,6 +21,8 @@ from rasterio.warp import transform as transform_tool
 from rasterio.merge import merge
 import xml.etree.ElementTree as ET
 from rasterio.warp import calculate_default_transform, reproject, Resampling
+from rasterio.warp import calculate_default_transform, reproject, Resampling
+from rasterio import Affine
 from rasterio.plot import show
 import geopandas as gpd
 import shapely
@@ -244,17 +246,59 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                     src_files_to_mosaic.append(src)
                 # Merge all tiles together
                 mosaic, out_trans = merge(src_files_to_mosaic)
-                # Show(mosaic, cmap='terrain')
                 out_meta = src.meta.copy()
                 out_meta.update({"driver": "GTiff",
                                 "height": mosaic.shape[1],
                                 "width": mosaic.shape[2],
                                 "transform": out_trans})
-                with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',
-                                                str(cfg.PARAMS['date'][0]),'mosaic',
-                                                str(band+'.tif')), "w", **out_meta) as dest:
-                    print('Writing mosaic to file...', band)
-                    dest.write(mosaic)
+
+                ###### Reproject to 10 Meter resolution:
+                bands_60m = ['B01.tif', 'B09.tif', 'B10.tif']
+                bands_20m = ['B05.tif', 'B06.tif', 'B07.tif', 'B11.tif', 'B12.tif']
+                print("Current band is ",band)
+                if band+".tif" in bands_60m or band+".tif" in bands_20m:
+                    if band+".tif" in bands_60m:
+                        res_factor = 6
+                    elif band+".tif" in bands_20m:
+                        res_factor = 2
+                    arr = mosaic
+                    newarr = np.empty(shape=(arr.shape[0],  # same number of bands
+                                             (arr.shape[1] * res_factor),
+                                             (arr.shape[2] * res_factor)), dtype='uint16')
+                    print(band, arr.shape)
+                    print(band, newarr.shape)
+
+                    # adjust the new affine transform to the smaller cell size
+                    old_transform = out_trans
+                    new_transform = Affine(old_transform.a / res_factor, old_transform.b, old_transform.c,
+                                           old_transform.d, old_transform.e / res_factor, old_transform.f)
+                    out_meta['transform'] = new_transform
+                    out_meta['width'] = out_meta['width'] * res_factor
+                    out_meta['height'] = out_meta['height'] * res_factor
+                ############# End reproject
+
+                    with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',
+                                                    str(cfg.PARAMS['date'][0]),'mosaic',
+                                                    str(band+'.tif')), "w", **out_meta) as dest:
+                        reproject(
+                            source=arr, destination=newarr,
+                            src_transform=old_transform,
+                            dst_transform=new_transform,
+                            src_crs=dest.crs,
+                            dst_crs=dest.crs,
+                            resampling=Resampling.nearest)
+
+                        print('Writing mosaic to file...', band)
+                        dest.write(mosaic)
+
+
+                else:
+                    with rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                                str(cfg.PARAMS['date'][0]), 'mosaic',
+                                                str(band + '.tif')), "w", **out_meta) as dest:
+
+                        print('Writing mosaic to file...', band)
+                        dest.write(mosaic)
 
         # Extract Metadata for Tile
 

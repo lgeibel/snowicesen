@@ -33,7 +33,7 @@ if __name__ == '__main__':
 
     # Only keep those glaciers to have smaller dataset
     rgidf = rgidf[rgidf.RGIId.isin([
-  #      'RGI50-11.B4504',  # Gries
+        'RGI50-11.B4504',  # Gries
         'RGI50-11.B4312n-1',  # Rhone
  #       'RGI50-11.B5616n-1',  # Findelen
  #       'RGI50-11.A55F03',  # Plaine Morte
