@@ -9,8 +9,9 @@ from snowicesat.workflow import init_glacier_regions_snowicesat
 from snowicesat.utils import download_all_tiles
 from crampon.workflow import execute_entity_task
 from datetime import timedelta
-from snowicesat.utils import datetime_to_int, int_to_datetime
-
+from snowicesat.utils import datetime_to_int, int_to_datetime, extract_metadata
+import glob
+import os
 
 
 logging.basicConfig(format='%(asctime)s: %(name)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=logging.DEBUG)
@@ -60,10 +61,12 @@ if __name__ == '__main__':
     # Iterate over all days, checking between start and enddate
     while end_date_var<=end_date:
         print(end_date_var)
-        # TODO: why is it not iterating over more than one day?
         cfg.PARAMS['date']= datetime_to_int(start_date_var, end_date_var)
         # Download data for given glaciers for this date
-        tiles_downloaded = download_all_tiles(rgidf, clear_cache = False, clear_safe = False) # Function in downloads_snowicesat
+        tiles_downloaded = download_all_tiles(rgidf,
+                                              clear_cache = False,
+                                              clear_safe = False) # Function in untils
+        # ALSO UNCOMMENT tiles_downloaded = 1!!!!
         #move one day ahead
         start_date_var = start_date_var+timedelta(days=1)
         end_date_var = start_date_var+timedelta(days=1)

@@ -79,13 +79,17 @@ def crop_sentinel_to_glacier(gdir):
                                  "width": out_image.shape[2],
                                  "transform": out_transform})
 
-            with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]),'cropped_cache'+band),'w', **out_meta) as src1:
+            with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',
+                                            str(cfg.PARAMS['date'][0]),
+                                            'cropped_cache'+band),'w', **out_meta) \
+                    as src1:
                 src1.write(out_image)
 
             # ---  2. REPROJECT to local grid: we want to project out_image with out_meta to local crs of glacier
                 # Calculate Transform
             dst_transform, width, height = calculate_default_transform(
-                    src1.crs, local_crs, out_image.shape[1], out_image.shape[2], *src1.bounds)
+                    src1.crs, local_crs, out_image.shape[1],
+                    out_image.shape[2], *src1.bounds)
 
             out_meta.update({
                     'crs': local_crs,
@@ -94,9 +98,10 @@ def crop_sentinel_to_glacier(gdir):
                     'height': height
                 })
 
-  #      with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]),'cropped_reprojected_band'+band), 'w', **out_meta) as dst:
             with rasterio.open(
-                        os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]), 'cropped_cache' + band),
+                        os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                     str(cfg.PARAMS['date'][0]),
+                                     'cropped_cache' + band),
                         'w', **out_meta) as src1:
 
                 reproject(
@@ -110,16 +115,16 @@ def crop_sentinel_to_glacier(gdir):
                 # Write to geotiff in cache
                 src1.write(out_image)
 
-               #TODO: remove all funny cropped.tif files
-
             # Open with xarray into DataArray
-        band_array = xarray.open_rasterio(os.path.join(cfg.PATHS['working_dir'],'cache',str(cfg.PARAMS['date'][0]),'cropped_cache'+band))
+        band_array = xarray.open_rasterio(
+            os.path.join(cfg.PATHS['working_dir'],'cache',
+            str(cfg.PARAMS['date'][0]),'cropped_cache'+band)
+        )
 
         band_array.attrs['pyproj_srs'] = band_array.crs
         band_array.attrs['pyproj_srs'] = rasterio.crs.CRS.to_proj4(src1.crs)
 
-            #print(band_array.crs)
-            # write all bands into list b_sub:
+        # write all bands into list b_sub:
         b_sub.append(band_array)
 
     # Merge all bands to write into netcdf file!
@@ -133,7 +138,9 @@ def crop_sentinel_to_glacier(gdir):
     # check if netcdf file for this glacier already exists, create if not, append if exists
     if not os.path.isfile(gdir.get_filepath('sentinel')):
         print("netcdf does not exist yet, creating new")
-        all_bands.to_netcdf(gdir.get_filepath('sentinel'), 'w', format='NETCDF4', unlimited_dims={'time': True})
+        all_bands.to_netcdf(gdir.get_filepath('sentinel'),
+                            'w', format='NETCDF4',
+                            unlimited_dims={'time': True})
     else:
         print('Open existing file')
         existing = xr.open_dataset(gdir.get_filepath('sentinel'))
@@ -146,7 +153,20 @@ def crop_sentinel_to_glacier(gdir):
             appended = xr.concat([existing, all_bands], dim='time')
             existing.close()
             #Write to file
-            appended.to_netcdf(gdir.get_filepath('sentinel'), 'w', format='NETCDF4', unlimited_dims={'time': True})
+            appended.to_netcdf(gdir.get_filepath('sentinel'),
+                               'w', format='NETCDF4',
+                               unlimited_dims={'time': True})
+
+    # Remove .tif files:
+    cache_list = [filename for filename in glob.glob(
+                    os.path.join(cfg.PATHS['working_dir'],
+                                 'cache',
+                                  str(cfg.PARAMS['date'][0]),
+                                 'cropped_cache', '*.tif'),
+                    recursive=False)]
+    print(cache_list)
+    for f in cache_list:
+        shutil.rmtree(f)
 
 
 

@@ -4,25 +4,14 @@ A collection of some useful miscellaneous functions.
 
 from __future__ import absolute_import, division
 
-from joblib import Memory
-import posixpath
-import salem
-import os
-import pandas as pd
-import numpy as np
-import logging
-import paramiko as pm
-import xarray as xr
-import rasterio
-import subprocess
-from rasterio.merge import merge as merge_tool
-from rasterio.warp import transform as transform_tool
-
 from rasterio.merge import merge
 import xml.etree.ElementTree as ET
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio import Affine
+import matplotlib.pyplot as plt
+from rasterio.plot import show
+import numpy as np
 from rasterio.plot import show
 import geopandas as gpd
 import shapely
@@ -107,7 +96,6 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
 
     Options: deleting .SAFE files after extracting data,
     deleting mosaics from previous time steps
-
 
     Structure
     - Reads outlines into GeoDataFrame
@@ -195,7 +183,8 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                                                     'cache',str(cfg.PARAMS['date'][0])))
                     # Unzip files into .safe directory, delete .zip folder
                     with zipfile.ZipFile(os.path.join(cfg.PATHS['working_dir'],'cache',
-                                                      str(cfg.PARAMS['date'][0]), download_zip['path'])) \
+                                                      str(cfg.PARAMS['date'][0]),
+                                                      download_zip['path'])) \
                             as zip_file:
                         zip_file.extractall(os.path.join(cfg.PATHS['working_dir'],
                                                          'cache', str(cfg.PARAMS['date'][0])))
@@ -216,7 +205,6 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
     if tiles_downloaded > 0:
         if clear_cache:
             print("Removing old merged tiles from cache")
-            #TODO: something is weird here with the date...which cache gets removed?
             tif_list = os.listdir(os.path.join(cfg.PATHS['working_dir'], 'cache',
                                                str(cfg.PARAMS['date'][0]), 'mosaic'))
             for f in tif_list:
@@ -231,12 +219,13 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                                              str(cfg.PARAMS['date'][0])))
 
                 # List of filenames of same band of this date in all .safe tiles
-                file_list = [filename for filename in glob.glob(os.path.join(
-                                                                    cfg.PATHS['working_dir'],
-                                                                    'cache',str(cfg.PARAMS['date'][0]),
-                                                                    '**','**','**','**',
-                                                                    str('*'+band+'.jp2')),
-                                                                recursive=False)]
+                file_list = [filename for filename in
+                             glob.glob(os.path.join(
+                                 cfg.PATHS['working_dir'],
+                                 'cache',str(cfg.PARAMS['date'][0]),
+                                  '**','**','**','**',
+                                  str('*'+band+'.jp2')),
+                                  recursive=False)]
 
                 # Create empty list for datafile
                 src_files_to_mosaic = []
@@ -270,8 +259,9 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
 
                     # adjust the new affine transform to the smaller cell size
                     old_transform = out_trans
-                    new_transform = Affine(old_transform.a / res_factor, old_transform.b, old_transform.c,
-                                           old_transform.d, old_transform.e / res_factor, old_transform.f)
+                    new_transform = Affine(old_transform.a / res_factor, old_transform.b,
+                                           old_transform.c, old_transform.d,
+                                           old_transform.e / res_factor, old_transform.f)
                     out_meta['transform'] = new_transform
                     out_meta['width'] = out_meta['width'] * res_factor
                     out_meta['height'] = out_meta['height'] * res_factor
@@ -279,7 +269,8 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
 
                     with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',
                                                     str(cfg.PARAMS['date'][0]),'mosaic',
-                                                    str(band+'.tif')), "w", **out_meta) as dest:
+                                                    str(band+'.tif')), "w", **out_meta) \
+                            as dest:
                         reproject(
                             source=arr, destination=newarr,
                             src_transform=old_transform,
@@ -295,7 +286,8 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                 else:
                     with rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache',
                                                 str(cfg.PARAMS['date'][0]), 'mosaic',
-                                                str(band + '.tif')), "w", **out_meta) as dest:
+                                                str(band + '.tif')), "w", **out_meta) \
+                            as dest:
 
                         print('Writing mosaic to file...', band)
                         dest.write(mosaic)
@@ -309,12 +301,14 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
 
         if clear_safe:
             print("Deleting downloaded .SAFE directories...")
-            safe_list = [filename for filename in glob.glob(cfg.PATHS['working_dir'] +
-                                                            '/cache/**/*.SAFE',
+            safe_list = [filename for filename in glob.glob(os.path.join(cfg.PATHS['working_dir'],
+                                                            'cache','**','*.SAFE'),
                                                             recursive=False)]
             for f in safe_list:
                 shutil.rmtree(f)
 
+        solar_zenith, solar_azimuth = extract_metadata(meta_name)
+        solar_zenith, solar_azimuth = resample_meta(solar_zenith, solar_azimuth)
 
 
     return tiles_downloaded
@@ -326,11 +320,14 @@ def extract_metadata(XML_File):
     Sentinel-2 MultiSpectral Instrument (MSI) data processing for aquatic science applications:
      Demonstrations and validations
     N.Pahlevan et al., Appendix B:
-    :param xml_file: :
-    :return: solar zenith angle
-    solar azimuth angle
+
+
+    :param XML_file: Metadata located in GRANULE/**/MDT_TL.xml file:
+    :return: zcoord: solar zenith angle in array of 5x5 km resolution
+    acoord: solar azimuth angle in array of 5x5 km resolution
     """
     # Parse the XML file
+    print("Extracting Metadata now")
     tree = ET.parse(XML_File)
     root = tree.getroot()
 
@@ -356,13 +353,13 @@ def extract_metadata(XML_File):
             czone = box.text.strip()[-3:]
             hemis = czone[-1:]
             zone = int(czone[:-1])
-        if box.tag == 'Size' and box.attrib['resolution'] == '60':
+        if box.tag == 'Size' and box.attrib['resolution'] == '10':
             for field in box:
                 if field.tag == 'NROWS':
                     nrows = int(field.text)
                 if field.tag == 'NCOLS':
                     ncols = int(field.text)
-        if box.tag == 'Geoposition' and box.attrib['resolution'] == '60':
+        if box.tag == 'Geoposition' and box.attrib['resolution'] == '10':
             for field in box:
                 if field.tag == 'ULX':
                     ulx = float(field.text)
@@ -373,11 +370,10 @@ def extract_metadata(XML_File):
     else:
         lzone = zone
     AngleObs = {'zone': zone, 'hemis': hemis, 'nrows': nrows, 'ncols': ncols, 'ul_x': ulx, 'ul_y': uly, 'obs': []}
+    print(AngleObs)
 
     for angle in angles:
-        if angle.tag == 'Sun_Angles_Grids':
-#            bandId = int(angle.attrib['bandId'])
-#            detectorId = int(angle.attrib['detectorId'])
+        if angle.tag == 'Sun_Angles_Grid':
             for bset in angle:
                 if bset.tag == 'Zenith':
                     zenith = bset
@@ -393,96 +389,78 @@ def extract_metadata(XML_File):
             for field in azimuth:
                 if field.tag == 'Values_List':
                     avallist = field
+            ycoord = []
+            xcoord =[]
+            zcoord =[]
+            acoord= []
+
             for rindex in range(len(zvallist)):
                 zvalrow = zvallist[rindex]
                 avalrow = avallist[rindex]
-                zvalues = float(zvalrow.text.split(' '))
-                avalues = float(avalrow.text.split(' '))
+                zvalues=[float(i) for i in zvalrow.text.split(' ')]
+                avalues=[float(i) for i in avalrow.text.split(' ')]
                 values = zip(zvalues, avalues)
-                ycoord = uly - rindex * row_step
-                id = 0
-                for cindex in zvalues:
-                    #TODO: think about how to write 5x5 km values into a grid....
-                    # we have: xcoord, ycoord, zvalue (which form?) avalue...shouldn't be too tricky?
-#                    print("Cindex",cindex)
-#                    print(id)
-                    xcoord = ulx + id * col_step
-                    id = id+1
-#                    (lat, lon) = utm_inv(lzone, xcoord, ycoord)
-                        #zen = float(cindex[0])
-                        #az = float(cindex[1])
-                       # observe = [xcoord, ycoord, Sat, Gx]
-                       # AngleObs['obs'].append(observe)
+                ycoord.append(uly - rindex * row_step)
+                xcoord.append(ulx + rindex * col_step)
+                zcoord.append(zvalues)
+                acoord.append(avalues)
 
-    #return (AngleObs)
+            zcoord = np.asarray(zcoord)
+            acoord = np.asarray(acoord)
 
-def utm_inv(Zone, X, Y, a=6378137.0, b=6356752.31414):
-    """ From s2a_angle_bands_mod.py module"""
-    if Zone < 0:
-        FNorth = 10000000.0  # Southern hemisphere False Northing
-    else:
-        FNorth = 0.0  # Northern hemisphere False Northing
-    FEast = 500000.0  # UTM False Easting
-    Scale = 0.9996  # Scale at CM (UTM parameter)
-    LatOrigin = 0.0  # Latitude origin (UTM parameter)
-    CMDeg = -177 + (abs(int(Zone)) - 1) * 6
-    CM = float(CMDeg) * pi / 180.0  # Central meridian (based on zone)
-    ecc = 1.0 - b / a * b / a
-    ep = ecc / (1.0 - ecc)
-    M0 = a * ((1.0 - ecc * (0.25 + ecc * (3.0 / 64.0 + ecc * 5.0 / 256.0))) * LatOrigin
-                 - ecc * (0.375 + ecc * (3.0 / 32.0 + ecc * 45.0 / 1024.0)) * sin(2.0 * LatOrigin)
-                  + ecc * ecc * (15.0 / 256.0 + ecc * 45.0 / 1024.0) * sin(4.0 * LatOrigin)
-                  - ecc * ecc * ecc * 35.0 / 3072.0 * sin(6.0 * LatOrigin))
-    M = M0 + (Y - FNorth) / Scale
-    Mu = M / (a * (1.0 - ecc * (0.25 + ecc * (3.0 / 64.0 + ecc * 5.0 / 256.0))))
-    e1 = (1.0 - sqrt(1 - ecc)) / (1.0 + sqrt(1.0 - ecc))
-    Phi1 = Mu + (e1 * (1.5 - 27.0 / 32.0 * e1 * e1) * sin(2.0 * Mu)
-                  + e1 * e1 * (21.0 / 16.0 - 55.0 / 32.0 * e1 * e1) * sin(4.0 * Mu)
-                     + 151.0 / 96.0 * e1 * e1 * e1 * sin(6.0 * Mu)
-                     + 1097.0 / 512.0 * e1 * e1 * e1 * e1 * sin(8.0 * Mu))
-    slat = sin(Phi1)
-    clat = cos(Phi1)
-    Rn1 = a / sqrt(1.0 - ecc * slat * slat)
-    T1 = slat * slat / clat / clat
-    C1 = ep * clat * clat
-    R1 = Rn1 * (1.0 - ecc) / (1.0 - ecc * slat * slat)
-    D = (X - FEast) / Rn1 / Scale
-      # Calculate Lat/Lon
-    Lat = Phi1 - (Rn1 * slat / clat / R1 * (D * D / 2.0
-                                                - (
-                                                            5.0 + 3.0 * T1 + 10.0 * C1 - 4.0 * C1 * C1 - 9.0 * ep) * D * D * D * D / 24.0
-                                                + (
-                                                            61.0 + 90.0 * T1 + 298.0 * C1 + 45.0 * T1 * T1 - 252.0 * ep - 3.0 * C1 * C1) * D * D * D * D * D * D / 720.0))
-    Lon = CM + (D - (1.0 + 2.0 * T1 + C1) * D * D * D / 6.0 + (
-                    5.0 - 2.0 * C1 + 28.0 * T1 - 3.0 * C1 * C1 + 8.0 * ep + 24.0 * T1 * T1)
-                    * D * D * D * D * D / 120.0) / clat
+    return zcoord, acoord
 
-    return (Lat, Lon)
 
-def LOSVec( Lat, Lon, Zen, Az ):
-    """ From s2a_angle_bands_mod.py module
-    :param Lat:
-    :param Lon:
-    :param Zen:
-    :param Az:
-    :return:
+
+
+def resample_meta(solar_zenith, solar_azimuth):
     """
-    a = 6378137.0  # WGS 84 semi-major axis in meters
-    b = 6356752.314  # WGS 84 semi-minor axis in meters
-    ecc = 1.0 - b / a * b / a  # WGS 84 ellipsoid eccentricity
-    LSRx = ( -sin(Lon), cos(Lon), 0.0 )
-    LSRy = ( -sin(Lat)*cos(Lon), -sin(Lat)*sin(Lon), cos(Lat) )
-    LSRz = ( cos(Lat)*cos(Lon), cos(Lat)*sin(Lon), sin(Lat) )
-    LOS = ( sin(Zen)*sin(Az), sin(Zen)*cos(Az), cos(Zen) )
-    Sat = ( LOS[0]*LSRx[0] + LOS[1]*LSRy[0] + LOS[2]*LSRz[0],
-	        LOS[0]*LSRx[1] + LOS[1]*LSRy[1] + LOS[2]*LSRz[1],
-	        LOS[0]*LSRx[2] + LOS[1]*LSRy[2] + LOS[2]*LSRz[2] )
-    Rn = a / sqrt( 1.0 - ecc *sin(Lat)*sin(Lat))
-    Gx = ( Rn*cos(Lat)*cos(Lon),
-               Rn*cos(Lat)*sin(Lon),
-               Rn*(1-ecc)*sin(Lat) )
-    return (Sat, Gx)
+    Resamples Solar Zenith and solar azimuth angle from 5x5 km
+    to 10 m Grid (nearest neighbor) and writes into GeoTIFF
+    :return: filename to solar_zenith.tif, solar_azimuth.tif
+    """
 
+    # Open 10 m resolution tile to read size and dimension of final tile:
+    with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',
+                                                    str(cfg.PARAMS['date'][0]),'mosaic',
+                                                    str('B02.tif'))) as src:
+        out_meta = src.meta.copy()
+        newarr = float(src.read())
 
+        print(newarr, newarr.dtype, newarr.shape)
+
+        # Add scaling factor of 10000 to convert float to int
+        zen_arr = solar_zenith
+        az_arr = solar_azimuth
+
+#        print(newarr, newarr.dtype)
+        print(zen_arr, zen_arr.dtype, zen_arr.shape)
+
+        # adjust the old affine transform (500 times coarser than new transform)
+        new_transform = src.transform
+        old_transform = Affine(new_transform.a * 500, new_transform.b,
+                               new_transform.c, new_transform.d,
+                               new_transform.e * 500, new_transform.f)
+        print(out_meta)
+        out_meta['dtype'] ='float64'
+
+        # TODO: merge tiles  if more than one
+
+    with rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                        str(cfg.PARAMS['date'][0]), 'mosaic',
+                                        "solar_zenith.tif"), "w", **out_meta) \
+            as dest:
+
+        reproject(
+                source=zen_arr, destination=newarr,
+                src_transform=old_transform,
+                dst_transform=new_transform,
+                src_crs=src.crs,
+                dst_crs=src.crs,
+                resampling=Resampling.nearest)
+
+        print(out_meta)
+        print(newarr, newarr.dtype, newarr.shape)
+        dest.write(newarr)
 
 
