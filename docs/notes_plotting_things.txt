@@ -1,0 +1,18 @@
+import xarray as xr
+import matplotlib.pyplot as plt
+file = xr.open_dataset("C:\\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\SWISS\per_glacier\RGI50-11\RGI50-11.B4\RGI50-11.B4312n-1\sentinel.nc")
+fig, ax = plt.subplots()
+file.isel(time=0, band=7).img_values.plot(ax=ax)
+
+
+ import geopandas as gpd
+ol = gpd.read_file("C:\\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\SWISS\per_glacier\RGI50-11\RGI50-11.B4\RGI50-11.B4312n-1\outlines.shp")
+fig, ax2 = plt.subplots()
+ol.plot(ax=ax2)
+ol.crs
+
+import rasterio
+from rasterio.plot import show
+tile = rasterio.open("C:\\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\SWISS\cropped_reprojected_band.tif")
+fig, ax2 = plt.subplots()
+show(tile)

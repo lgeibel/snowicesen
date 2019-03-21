@@ -5,6 +5,6 @@ import crampon.cfg as cfg
 """
 
 # Entity tasks
-from snowicesat.preprocessing.gis import define_glacier_region_snowicesat
+from snowicesat.preprocessing.gis import define_glacier_region_snowicesat, ekstrand_correction
 from crampon.core.preprocessing.gis import glacier_masks
-from snowicesat.preprocessing.downloads_snowicesat import crop_sentinel_to_glacier
+from snowicesat.preprocessing.downloads_snowicesat import crop_sentinel_to_glacier, crop_metadata_to_glacier

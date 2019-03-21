@@ -17,6 +17,7 @@ import salem
 from oggm.core.gis import gaussian_blur, multi_to_poly,\
     _interp_polygon, _polygon_to_pix, define_glacier_region, glacier_masks
 from oggm.utils import get_topo_file
+import matplotlib.pyplot as plt
 
 import rasterio
 from rasterio.warp import reproject, Resampling
@@ -25,6 +26,8 @@ try:
     from rasterio.merge import merge as merge_tool
 except ImportError:
     from rasterio.tools.merge import merge as merge_tool
+from scipy.ndimage.interpolation import map_coordinates
+
 
 # Module logger
 log = logging.getLogger(__name__)
@@ -119,7 +122,6 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
 #    print(w_gdf['Name'].head())
     w_gdf_2 = gpd.read_file(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\DEM\worksheets\worksheet_SWISSALTI3D_2010.shp")
 #    print(w_gdf_2['zone'].head())
-
 
     gdf = gpd.read_file(gdir.get_filepath('outlines'))
     gdf = gdf.to_crs(w_gdf.crs)
@@ -284,15 +286,6 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
         'height': ny
     })
 
-    # Could be extended so that the cfg file takes all Resampling.* methods
-    # if cfg.PARAMS['topo_interp'] == 'bilinear':
-    #    resampling = Resampling.bilinear
-    # elif cfg.PARAMS['topo_interp'] == 'cubic':
-    #    resampling = Resampling.cubic
-    # else:
-    #    raise ValueError('{} interpolation not understood'
-    #                     .format(cfg.PARAMS['topo_interp']))
-
     try:
         resampling = Resampling[cfg.PARAMS['topo_interp'].lower()]
     except ValueError:
@@ -351,5 +344,90 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
     homo_dem_ts.to_netcdf(gdir.get_filepath('homo_dem_ts'))
 
 
-    #_ = get_geodetic_deltav(gdir)
+@entity_task(log)
+def ekstrand_correction(gdir):
+    """
+    Performs Ekstrand Terrain correction of
+    scene in Glacier Directory
+       :param gdirs: :py:class:`crampon.GlacierDirectory`
+        A GlacierDirectory instance.
+    :return:
+    """
+    # Get slope, aspect and hillshade of Glacier Scene:
+    slope, aspect, hillshade = calc_slope_aspect_hillshade(gdir)
+
+
+def calc_slope_aspect_hillshade(gdir):
+    """
+    Reads dem_ts group('alti') to xarray, then
+    converts to data_array, calculate slope, aspect and
+    hillshade
+
+    :param gdirs: :py:class:`crampon.GlacierDirectory`
+        A GlacierDirectory instance.
+    :return: slope, aspect: 3-D numpy array
+    """
+
+    dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'),
+                             group="alti")
+    elevation_grid = dem_ts.isel(time=0).height.values
+    # Resample DEM to 10 Meter Resolution:
+    dx = dem_ts.isel(time=0).height.attrs['res'][0]
+    print(elevation_grid.shape)
+
+    # hillshade requires solar angles:
+    solar_angles = xr.open_dataset(gdir.get_filepath('solar_angles'))
+    solar_azimuth = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_azimuth').solar_angles.values
+    solar_zenith = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_zenith').solar_angles.values
+    print(solar_azimuth.shape, solar_zenith.shape)
+
+    z_bc = assign_bc(elevation_grid)
+    # Compute finite differences
+    slope_x = (z_bc[1:-1, 2:] - z_bc[1:-1, :-2]) / (2 * dx)
+    slope_y = (z_bc[2:, 1:-1] - z_bc[:-2, 1:-1]) / (2 * dx)
+
+    # Magnitude of slope in radians
+    slope = np.arctan(np.sqrt(slope_x ** 2 + slope_y ** 2))
+    # Apsect ratio in radians
+    aspect = np.arctan2(slope_y, slope_x)
+
+    # Convert solar angles from deg to rad:
+    azimuth_rad, elevation_rad = (360 - solar_azimuth + 90) * np.pi / 180, (90 - solar_zenith) * np.pi / 180
+    hillshade = ((np.cos(elevation_rad) * np.cos(slope)) + ...
+            (np.sin(elevation_rad)* np.sin(slope) * np.cos(azimuth_rad - aspect)))
+
+    plt.imshow(hillshade)
+    plt.show()
+
+
+
+    return slope, aspect, hillshade
+
+
+
+def assign_bc(elev_grid):
+
+    """ Pads the boundaries of a grid
+     Boundary condition pads the boundaries with equivalent values
+     to the data margins, e.g. x[-1,1] = x[1,1]
+     This creates a grid 2 rows and 2 columns larger than the input
+    """
+
+    ny, nx = elev_grid.shape  # Size of array
+    z_bc = np.zeros((ny + 2, nx + 2))  # Create boundary condition array
+    z_bc[1:-1,1:-1] = elev_grid  # Insert old grid in center
+
+    #Assign boundary conditions - sides
+    z_bc[0, 1:-1] = elev_grid[0, :]
+    z_bc[-1, 1:-1] = elev_grid[-1, :]
+    z_bc[1:-1, 0] = elev_grid[:, 0]
+    z_bc[1:-1, -1] = elev_grid[:,-1]
+
+    #Assign boundary conditions - corners
+    z_bc[0, 0] = elev_grid[0, 0]
+    z_bc[0, -1] = elev_grid[0, -1]
+    z_bc[-1, 0] = elev_grid[-1, 0]
+    z_bc[-1, -1] = elev_grid[-1, 0]
+
+    return z_bc
 

@@ -18,6 +18,7 @@ import shapely
 import datetime as dt
 from configobj import ConfigObj, ConfigObjError
 from sentinelsat import SentinelAPI, read_geojson, geojson_to_wkt
+from scipy.ndimage.interpolation import map_coordinates
 import fiona
 import xarray
 from oggm.utils import *
@@ -193,7 +194,6 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                 else:
                     print("Tile is downloaded already")
 
-    print("Merging all downloaded tiles")
     # Check if file already exists:
 
     # Merging downloaded tiles to Mosaic: read in all band tiles,
@@ -241,7 +241,7 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                                 "width": mosaic.shape[2],
                                 "transform": out_trans})
 
-                ###### Reproject to 10 Meter resolution:
+                #----- Reproject to 10 Meter resolution:
                 bands_60m = ['B01.tif', 'B09.tif', 'B10.tif']
                 bands_20m = ['B05.tif', 'B06.tif', 'B07.tif', 'B11.tif', 'B12.tif']
                 print("Current band is ",band)
@@ -265,7 +265,9 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                     out_meta['transform'] = new_transform
                     out_meta['width'] = out_meta['width'] * res_factor
                     out_meta['height'] = out_meta['height'] * res_factor
-                ############# End reproject
+                #--------- End reproject
+
+                # Now Write to file: B01. tif, B02.tif, etc.
 
                     with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',
                                                     str(cfg.PARAMS['date'][0]),'mosaic',
@@ -278,26 +280,90 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                             src_crs=dest.crs,
                             dst_crs=dest.crs,
                             resampling=Resampling.nearest)
-
-                        print('Writing mosaic to file...', band)
                         dest.write(mosaic)
-
-
                 else:
                     with rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache',
                                                 str(cfg.PARAMS['date'][0]), 'mosaic',
                                                 str(band + '.tif')), "w", **out_meta) \
                             as dest:
-
-                        print('Writing mosaic to file...', band)
                         dest.write(mosaic)
 
-        # Extract Metadata for Tile
+        # ------ Metadata -----
+        if not os.path.exists(os.path.join(cfg.PATHS['working_dir'],
+                                           'cache', str(cfg.PARAMS['date'][0]),
+                                           'meta', "solar_zenith_angles.tif")):
+            # Extract Metadata for each Tile
+            # list of all metadata files for this date
+            meta_list = glob.glob(os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                               str(cfg.PARAMS['date'][0]), '**',
+                                               'GRANULE', '**', 'MTD_TL.xml'),
+                                  recursive=False)
+            id = 0
+            for meta_name in meta_list:
+                # Read eaach tile from .xml to GeoTIff and reproject to
+            #  10 Meter resolution
+                solar_zenith, solar_azimuth = extract_metadata(meta_name)
+                resample_meta(solar_zenith, solar_azimuth, id)
+                id = id+1
 
-        meta_name = glob.glob(os.path.join(cfg.PATHS['working_dir'], 'cache',
-                                           str(cfg.PARAMS['date'][0]), '**',
-                                           'GRANULE', '**', 'MTD_TL.xml'),
-                              recursive=False)[0]
+            # Create empty list for datafile
+            solar_zenith_to_mosaic = []
+            solar_azimuth_to_mosaic =[]
+
+            # List all geotiffs containing solar zenith angles
+            zenith_list = glob.glob(os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                               str(cfg.PARAMS['date'][0]), 'meta',
+                                                '*zenith.tif'),
+                                    recursive=False)
+            for fp in zenith_list:
+                # Open File, append to list
+                 with rasterio.open(fp) as src:
+                    solar_zenith_to_mosaic.append(src)
+                    # Merge all tiles of zenith angles together
+                    zenith_mosaic, out_trans = merge(solar_zenith_to_mosaic)
+
+            # Update metadata for merges mosaic
+            out_meta = src.meta.copy()
+            out_meta.update({"driver": "GTiff",
+                                  "height": zenith_mosaic.shape[1],
+                                  "width": zenith_mosaic.shape[2],
+                                  "transform": out_trans})
+
+            # Open new file to write merged mosaic
+            with rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                             str(cfg.PARAMS['date'][0]), 'meta',
+                                             "solar_zenith_angles.tif"), "w", **out_meta) \
+                 as dest:
+                dest.write(zenith_mosaic)
+
+
+            # List all GeoTiffs conatining solar azimuth angles
+            azimuth_list = glob.glob(os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                               str(cfg.PARAMS['date'][0]), 'meta',
+                                                '*azimuth.tif'),
+                                    recursive=False)
+            for fp in azimuth_list:
+                # Open File, append to list
+                with rasterio.open(fp) as src:
+                    solar_azimuth_to_mosaic.append(src)
+                    # Merge all tiles with solar azimuth angles together
+                    azimuth_mosaic, out_trans = merge(solar_azimuth_to_mosaic)
+
+            # Open file to write merged mosaic of solar azimuth angles
+            with rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                             str(cfg.PARAMS['date'][0]), 'meta',
+                                             "solar_azimuth_angles.tif"), "w", **out_meta) \
+                 as dest:
+                dest.write(azimuth_mosaic)
+
+            for fp in zenith_list:
+                os.remove(fp)
+
+            for fp in azimuth_list:
+                os.remove(fp)
+
+
+            # -------  end of Metadata
 
         if clear_safe:
             print("Deleting downloaded .SAFE directories...")
@@ -307,8 +373,6 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
             for f in safe_list:
                 shutil.rmtree(f)
 
-        solar_zenith, solar_azimuth = extract_metadata(meta_name)
-        solar_zenith, solar_azimuth = resample_meta(solar_zenith, solar_azimuth)
 
 
     return tiles_downloaded
@@ -324,7 +388,7 @@ def extract_metadata(XML_File):
 
     :param XML_file: Metadata located in GRANULE/**/MDT_TL.xml file:
     :return: zcoord: solar zenith angle in array of 5x5 km resolution
-    acoord: solar azimuth angle in array of 5x5 km resolution
+    acoord: solar azimuth angle in array of 10x10m resolution
     """
     # Parse the XML file
     print("Extracting Metadata now")
@@ -338,39 +402,12 @@ def extract_metadata(XML_File):
         if child.tag[-14:] == 'Geometric_Info':
             geoinfo = child
 
-    for segment in geninfo:
-        if segment.tag == 'TILE_ID':
-            tile_id = segment.text.strip()
-
+    # Find the angles
     for segment in geoinfo:
         if segment.tag == 'Tile_Geocoding':
             frame = segment
         if segment.tag == 'Tile_Angles':
             angles = segment
-
-    for box in frame:
-        if box.tag == 'HORIZONTAL_CS_NAME':
-            czone = box.text.strip()[-3:]
-            hemis = czone[-1:]
-            zone = int(czone[:-1])
-        if box.tag == 'Size' and box.attrib['resolution'] == '10':
-            for field in box:
-                if field.tag == 'NROWS':
-                    nrows = int(field.text)
-                if field.tag == 'NCOLS':
-                    ncols = int(field.text)
-        if box.tag == 'Geoposition' and box.attrib['resolution'] == '10':
-            for field in box:
-                if field.tag == 'ULX':
-                    ulx = float(field.text)
-                if field.tag == 'ULY':
-                    uly = float(field.text)
-    if hemis == 'S':
-        lzone = -zone
-    else:
-        lzone = zone
-    AngleObs = {'zone': zone, 'hemis': hemis, 'nrows': nrows, 'ncols': ncols, 'ul_x': ulx, 'ul_y': uly, 'obs': []}
-    print(AngleObs)
 
     for angle in angles:
         if angle.tag == 'Sun_Angles_Grid':
@@ -380,17 +417,11 @@ def extract_metadata(XML_File):
                 if bset.tag == 'Azimuth':
                     azimuth = bset
             for field in zenith:
-                if field.tag == 'COL_STEP':
-                    col_step = int(field.text)
-                if field.tag == 'ROW_STEP':
-                    row_step = int(field.text)
                 if field.tag == 'Values_List':
                     zvallist = field
             for field in azimuth:
                 if field.tag == 'Values_List':
                     avallist = field
-            ycoord = []
-            xcoord =[]
             zcoord =[]
             acoord= []
 
@@ -399,9 +430,6 @@ def extract_metadata(XML_File):
                 avalrow = avallist[rindex]
                 zvalues=[float(i) for i in zvalrow.text.split(' ')]
                 avalues=[float(i) for i in avalrow.text.split(' ')]
-                values = zip(zvalues, avalues)
-                ycoord.append(uly - rindex * row_step)
-                xcoord.append(ulx + rindex * col_step)
                 zcoord.append(zvalues)
                 acoord.append(avalues)
 
@@ -412,12 +440,21 @@ def extract_metadata(XML_File):
 
 
 
-
-def resample_meta(solar_zenith, solar_azimuth):
+def resample_meta(solar_zenith, solar_azimuth, index):
     """
     Resamples Solar Zenith and solar azimuth angle from 5x5 km
     to 10 m Grid (nearest neighbor) and writes into GeoTIFF
-    :return: filename to solar_zenith.tif, solar_azimuth.tif
+
+    :params:
+    ------------
+    solar_zenith, solar_azimuth:
+    np.array float64 containing solar zenith and azimuth
+    angles of tile in 5 km x 5 km grid
+
+
+    Returns:
+    ------------
+    None
     """
 
     # Open 10 m resolution tile to read size and dimension of final tile:
@@ -425,42 +462,36 @@ def resample_meta(solar_zenith, solar_azimuth):
                                                     str(cfg.PARAMS['date'][0]),'mosaic',
                                                     str('B02.tif'))) as src:
         out_meta = src.meta.copy()
-        newarr = float(src.read())
+        newarr = src.read()
+        newarr = np.squeeze(newarr)
+        newarr = newarr.astype(float)
 
-        print(newarr, newarr.dtype, newarr.shape)
-
-        # Add scaling factor of 10000 to convert float to int
-        zen_arr = solar_zenith
-        az_arr = solar_azimuth
-
-#        print(newarr, newarr.dtype)
-        print(zen_arr, zen_arr.dtype, zen_arr.shape)
-
-        # adjust the old affine transform (500 times coarser than new transform)
         new_transform = src.transform
         old_transform = Affine(new_transform.a * 500, new_transform.b,
                                new_transform.c, new_transform.d,
                                new_transform.e * 500, new_transform.f)
-        print(out_meta)
-        out_meta['dtype'] ='float64'
+        out_meta['dtype'] = 'float64'
 
-        # TODO: merge tiles  if more than one
+    angles = [solar_zenith, solar_azimuth]
+    angles_str = ["solar_zenith.tif", "solar_azimuth.tif"]
+    id = 0
+    if not os.path.exists(os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                       str(cfg.PARAMS['date'][0]), 'meta')):
+        os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                 str(cfg.PARAMS['date'][0]), 'meta'))
 
-    with rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache',
-                                        str(cfg.PARAMS['date'][0]), 'mosaic',
-                                        "solar_zenith.tif"), "w", **out_meta) \
-            as dest:
-
-        reproject(
-                source=zen_arr, destination=newarr,
-                src_transform=old_transform,
-                dst_transform=new_transform,
-                src_crs=src.crs,
-                dst_crs=src.crs,
-                resampling=Resampling.nearest)
-
-        print(out_meta)
-        print(newarr, newarr.dtype, newarr.shape)
-        dest.write(newarr)
-
+    for angle in angles:
+        with rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                         str(cfg.PARAMS['date'][0]), 'meta',
+                                         str(index)+angles_str[id]), "w", **out_meta) \
+             as dest:
+            reproject(
+                     source=angle, destination=newarr,
+                     src_transform=old_transform,
+                     dst_transform=src.transform,
+                     src_crs=src.crs,
+                     dst_crs=src.crs,
+                     resampling=Resampling.nearest)
+            dest.write(newarr, indexes=1)
+        id = id + 1
 

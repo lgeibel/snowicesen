@@ -57,7 +57,6 @@ if __name__ == '__main__':
     print("end_date=", end_date)
     print("end_date_var=", end_date_var)
 
-
     # Iterate over all days, checking between start and enddate
     while end_date_var<=end_date:
         print(end_date_var)
@@ -66,13 +65,12 @@ if __name__ == '__main__':
         tiles_downloaded = download_all_tiles(rgidf,
                                               clear_cache = False,
                                               clear_safe = False) # Function in untils
-        # ALSO UNCOMMENT tiles_downloaded = 1!!!!
         #move one day ahead
         start_date_var = start_date_var+timedelta(days=1)
         end_date_var = start_date_var+timedelta(days=1)
         if tiles_downloaded > 0:
             # Preprocessing tasks: only excute when new files were donwloaded!
-            task_list = [tasks.crop_sentinel_to_glacier]
+            task_list = [tasks.crop_sentinel_to_glacier, tasks.crop_metadata_to_glacier, tasks.ekstrand_correction]
             for task in task_list:
                 execute_entity_task(task, gdirs)
 
