@@ -320,8 +320,6 @@ def define_glacier_region_crampon(gdir, entity=None, reset_dems=False):
                 homo_dems.append(dst_array)
                 homo_dates.append(t.time.values)
 
-    #TODO: download sentinel:
-    download_sentinel((minlon, maxlon),(minlat, maxlat))
 
     # Stupid, but we need it until we are able to fill the whole galcier grid with valid DEM values/take care of NaNs
     # Open DEM

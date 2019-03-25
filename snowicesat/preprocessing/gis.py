@@ -18,6 +18,7 @@ from oggm.core.gis import gaussian_blur, multi_to_poly,\
     _interp_polygon, _polygon_to_pix, define_glacier_region, glacier_masks
 from oggm.utils import get_topo_file
 import matplotlib.pyplot as plt
+import math
 
 import rasterio
 from rasterio.warp import reproject, Resampling
@@ -100,7 +101,6 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
     tmp_grid = salem.Grid(proj=proj_out, nxny=(nx, ny), x0y0=(ulx, uly),
                           dxdy=(dx, -dx), pixel_ref='corner')
     minlon, maxlon, minlat, maxlat = tmp_grid.extent_in_crs(crs=salem.wgs84)
-
     # save transformed geometry to disk
     entity = entity.copy()
     entity['geometry'] = geometry
@@ -115,234 +115,6 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
         del towrite['DEM_SOURCE']
     towrite.to_file(gdir.get_filepath('outlines'))
 
-#    # TODO: intersect outline.shp with TILE ID, create worksheet --> safe which glacier is on which tile --> safe in PARAMETER: TileID
-   # print('Testing get_zones_from_worksheet')
-    # similar to get_local_dems and get_zones_from_worksheet
-    w_gdf = gpd.read_file(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\sentinel_tiles\sentinel2_tiles_switzerland.shp")
-#    print(w_gdf['Name'].head())
-    w_gdf_2 = gpd.read_file(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\DEM\worksheets\worksheet_SWISSALTI3D_2010.shp")
-#    print(w_gdf_2['zone'].head())
-
-    gdf = gpd.read_file(gdir.get_filepath('outlines'))
-    gdf = gdf.to_crs(w_gdf.crs)
-    res_is = gpd.overlay(w_gdf, gdf, how='intersection')
-
-    # zones might be duplicates if the glacier shape is 'winding'
-    list_tile_id = np.unique(res_is['Name_1'].tolist())
-
-
-    # TODO: crampon. This needs rework if it should work also for SGI
-    # Also transform the intersects if necessary
-    gdf = cfg.PARAMS['intersects_gdf']
-    if len(gdf) > 0:
-        gdf = gdf.loc[((gdf.RGIId_1 == gdir.id) |
-                       (gdf.RGIId_2 == gdir.id))]
-        if len(gdf) > 0:
-            gdf = salem.transform_geopandas(gdf, to_crs=proj_out)
-            if hasattr(gdf.crs, 'srs'):
-                # salem uses pyproj
-                gdf.crs = gdf.crs.srs
-            gdf.to_file(gdir.get_filepath('intersects'))
-    else:
-        # Sanity check
-        if cfg.PARAMS['use_intersects']:
-            raise RuntimeError('You seem to have forgotten to set the '
-                               'intersects file for this run. OGGM works '
-                               'better with such a file. If you know what '
-                               'your are doing, set '
-                               "cfg.PARAMS['use_intersects'] = False to "
-                               "suppress this error.")
-
-    # Open DEM
-    source = entity.DEM_SOURCE if hasattr(entity, 'DEM_SOURCE') else None
-    if (not os.path.exists(gdir.get_filepath('dem_ts'))) or reset_dems:
-        log.info('Assembling local DEMs for {}...'.format(gdir.id))
-
-        # Here: open Swiss Alti DEMs
-        utils.get_local_dems(gdir)
-
-
-    # Use Grid properties to create a transform (see rasterio cookbook)
-    dst_transform = rasterio.transform.from_origin(
-        ulx, uly, dx, dx  # sign change (2nd dx) is done by rasterio.transform
-    )
-
-    # Could be extended so that the cfg file takes all Resampling.* methods
-    if cfg.PARAMS['topo_interp'] == 'bilinear':
-        resampling = Resampling.bilinear
-    elif cfg.PARAMS['topo_interp'] == 'cubic':
-        resampling = Resampling.cubic
-    else:
-        raise ValueError('{} interpolation not understood'
-                         .format(cfg.PARAMS['topo_interp']))
-
-    dem_source_list = [cfg.NAMES['SWISSALTI2010']]
-    oggm_dem = False
-    homo_dems = []
-    homo_dates = []
-    for demtype in dem_source_list:
-        try:
-            data = xr.open_dataset(gdir.get_filepath('dem_ts'), group=demtype)
-        except OSError:  # group not found
-            print('group {} not found'.format(demtype))
-            continue
-
-     #     # check latitude order (latitude needs to be decreasing as we have
-     #     # to create own transform and dy is automatically negative in rasterio)
-     #     if data.coords['y'][0].item() < data.coords['y'][-1].item():
-     #         data = data.sel(y=slice(None, None, -1))
-     #
-     #     for t in data.time:
-     #         dem = data.sel(time=t)
-     #
-     #         dem_arr = dem.height.values
-     #
-     #         src_transform = rasterio.transform. \
-     #             from_origin(min(dem.coords['x'].values),  # left
-     #                         max(dem.coords['y'].values),  # upper
-     #                         np.abs(
-     #                             dem.coords['x'][1].item() - dem.coords['x'][
-     #                                 0].item()),
-     #                         np.abs(
-     #                             dem.coords['y'][1].item() - dem.coords['y'][
-     #                                 0].item()))
-     #
-     #         # Set up profile for writing output
-     #         profile = {'crs': proj4_str,
-     #                    'nodata': dem.height.encoding['_FillValue'],
-     #                    'dtype': str(dem.height.encoding['dtype']),
-     #                    'count': 1,
-     #                    'transform': dst_transform,
-     #                    'interleave': 'band',
-     #                    'driver': 'GTiff',
-     #                    'width': nx,
-     #                    'height': ny,
-     #                    'tiled': False}
-     #         base, ext = os.path.splitext(gdir.get_filepath('dem'))
-     #         dem_reproj = base + str(t.item()) + ext
-     #         with rasterio.open(dem_reproj, 'w', **profile) as dest:
-     #             dst_array = np.empty((ny, nx),
-     #                                  dtype=str(dem.height.encoding['dtype']))
-     #             dst_array[:] = np.nan
-     #
-     #             reproject(
-     #                 # Source parameters
-     #                 source=dem_arr,
-     #                 src_crs=dem.pyproj_srs,
-     #                 src_transform=src_transform,
-     #                 # Destination parameters
-     #                 destination=dst_array,
-     #                 dst_transform=dst_transform,
-     #                 dst_crs=proj4_str,
-     #                 dst_nodata=np.nan,
-     #                 # Configuration
-     #                 resampling=resampling)
-     #
-     #             dest.write(dst_array, 1)
-     #
-     #             homo_dems.append(dst_array)
-     #             homo_dates.append(t.time.values)
-     #
-     # # Stupid, but we need it until we are able to fill the whole galcier grid with valid DEM values/take care of NaNs
-     # # Open DEM
-     # source = entity.DEM_SOURCE if hasattr(entity,
-     #                                       'DEM_SOURCE') else None
-     # dem_list, dem_source = get_topo_file((minlon, maxlon),
-     #                                      (minlat, maxlat),
-     #                                      rgi_region=gdir.rgi_region,
-     #                                      rgi_subregion=gdir.rgi_subregion,
-     #                                      source=source)
-     #
-     # log.debug('(%s) DEM source: %s', gdir.rgi_id, dem_source)
-     #
-     # # A glacier area can cover more than one tile:
-     # if len(dem_list) == 1:
-     #     dem_dss = [rasterio.open(
-     #         dem_list[0])]  # if one tile, just open it
-     #     dem_data = rasterio.band(dem_dss[0], 1)
-     #     if LooseVersion(rasterio.__version__) >= LooseVersion(
-     #             '1.0'):
-     #         src_transform = dem_dss[0].transform
-     #     else:
-     #         src_transform = dem_dss[0].affine
-     # else:
-     #     dem_dss = [rasterio.open(s) for s in
-     #                dem_list]  # list of rasters
-     #     dem_data, src_transform = merge_tool(
-     #         dem_dss)  # merged rasters
-     #
-     # # Use Grid properties to create a transform (see rasterio cookbook)
-     # dst_transform = rasterio.transform.from_origin(
-     #     ulx, uly, dx, dx
-     #     # sign change (2nd dx) is done by rasterio.transform
-     # )
-     #
-     # # Set up profile for writing output
-     # profile = dem_dss[0].profile
-     # profile.update({
-     #     'crs': proj4_str,
-     #     'transform': dst_transform,
-     #     'width': nx,
-     #     'height': ny
-     # })
-     #
-     # try:
-     #     resampling = Resampling[cfg.PARAMS['topo_interp'].lower()]
-     # except ValueError:
-     #     raise ValueError(
-     #         '{} interpolation not understood. Must be a '
-     #         'rasterio.Resampling method string supported by '
-     #         'rasterio.warp.reproject).'
-     #         .format(cfg.PARAMS['topo_interp']))
-     # ## Once there is a SUPPORTED_RESAMPLING constant in rasterio.warp (with 1.0 release)
-     # # if resampling not in SUPPORTED_RESAMPLING:
-     # #     raise ValueError()
-     #
-     # dem_reproj = gdir.get_filepath('dem')
-     # with rasterio.open(dem_reproj, 'w', **profile) as dest:
-     #     dst_array = np.empty((ny, nx), dtype=dem_dss[0].dtypes[0])
-     #     reproject(
-     #         # Source parameters
-     #         source=dem_data,
-     #         src_crs=dem_dss[0].crs,
-     #         src_transform=src_transform,
-     #         # Destination parameters
-     #         destination=dst_array,
-     #         dst_transform=dst_transform,
-     #         dst_crs=proj4_str,
-     #         # Configuration
-     #         resampling=resampling)
-     #
-     #     dest.write(dst_array, 1)
-     #
-     # for dem_ds in dem_dss:
-     #     dem_ds.close()
-     #
-     # oggm_dem = True
-
-     # # Glacier grid
-     # x0y0 = (ulx+dx/2, uly-dx/2)  # To pixel center coordinates
-     # glacier_grid = salem.Grid(proj=proj_out, nxny=(nx, ny),  dxdy=(dx, -dx),
-     #                           x0y0=x0y0)
-     # glacier_grid.to_json(gdir.get_filepath('glacier_grid'))
-     # gdir.write_pickle(dem_source_list, 'dem_source')
-     #
-     # # write homo dem time series
-     # homo_dem_ts = xr.Dataset({'height': (['time', 'y', 'x'],
-     #                                  np.array(homo_dems))},
-     #                      coords={
-     #                          'x': np.linspace(dst_transform[2],
-     #                                           dst_transform[2] + nx *
-     #                                           dst_transform[0], nx),
-     #                          'y': np.linspace(dst_transform[5],
-     #                                           dst_transform[5] + ny *
-     #                                           dst_transform[4], ny),
-     #                          'time': homo_dates},
-     #                      attrs={'id': gdir.rgi_id, 'name': gdir.name,
-     #                             'res': dx})
-     # homo_dem_ts = homo_dem_ts.sortby('time')
-     # homo_dem_ts.to_netcdf(gdir.get_filepath('homo_dem_ts'))
-
 
 @entity_task(log)
 def ekstrand_correction(gdir):
@@ -354,8 +126,10 @@ def ekstrand_correction(gdir):
     :return:
     """
     # Get slope, aspect and hillshade of Glacier Scene:
-    slope, aspect, hillshade = calc_slope_aspect_hillshade(gdir)
+    slope, aspect, hillshade, solar_azimuth, solar_zenith = calc_slope_aspect_hillshade(gdir)
 
+    # Peform linear regression after Ekstrand:
+    # x = ln(hillshade* cos(solar_zenith))
 
 def calc_slope_aspect_hillshade(gdir):
     """
@@ -365,25 +139,25 @@ def calc_slope_aspect_hillshade(gdir):
 
     :param gdirs: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    :return: slope, aspect: 3-D numpy array
+    :return: slope, aspect, hillshade, azimuth_rad, zenith_rad:
+                3-D numpy arrays of angles in radians
+
     """
 
-    dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'),
-                             group="alti")
+    dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
     #print("dem_ts = ", dem_ts)
-    elevation_grid = dem_ts.isel(time=0).height.values
+    elevation_grid = dem_ts.isel(time=0, height_rm=0).height_in_m.values
     # Resample DEM to 10 Meter Resolution:
-    dx = dem_ts.isel(time=0).height.attrs['res'][0]
-    # TODO: DEM must be in 10 Meter Resolution!
-    #print("elevation", elevation_grid.shape)
+    dx = dem_ts.attrs['res'][0]
 
     # hillshade requires solar angles:
     solar_angles = xr.open_dataset(gdir.get_filepath('solar_angles'))
-    #print("Solar Angles", solar_angles.sel(band='solar_azimuth'))
-    solar_azimuth = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_azimuth').solar_angles.values
-    solar_zenith = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_zenith').solar_angles.values
-    #print("solar angles", solar_azimuth.shape, solar_zenith.shape)
+    solar_azimuth = solar_angles.sel(time=cfg.PARAMS['date'][0], angles='solar_azimuth').angles_in_deg.values
+    solar_zenith = solar_angles.sel(time=cfg.PARAMS['date'][0], angles='solar_zenith').angles_in_deg.values
+    print("solar angles", solar_azimuth.shape, solar_zenith.shape)
 
+    # Expand grid on boundaries to obtain raster in same shape after
+    # differentiating
     z_bc = assign_bc(elevation_grid)
     # Compute finite differences
     slope_x = (z_bc[1:-1, 2:] - z_bc[1:-1, :-2]) / (2 * dx)
@@ -391,22 +165,22 @@ def calc_slope_aspect_hillshade(gdir):
 
     # Magnitude of slope in radians
     slope = np.arctan(np.sqrt(slope_x ** 2 + slope_y ** 2))
-    # Apsect ratio in radians
+    # Aspect ratio in radians
     aspect = np.arctan2(slope_y, slope_x)
 
     print("slope", slope.shape)
 
-    #plt.imshow(elevation_grid)
-    #plt.show()
+    # TODO: is slope in deg or in radians?
+    # TODO: double check elevation/Zenith!
 
     # Convert solar angles from deg to rad:
-    azimuth_rad, elevation_rad = (360 - solar_azimuth + 90) * np.pi / 180, (90 - solar_zenith) * np.pi / 180
-    hillshade = ((np.cos(elevation_rad) * np.cos(slope)) + ...
-            (np.sin(elevation_rad)* np.sin(slope) * np.cos(azimuth_rad - aspect)))
+    azimuth_rad = math.radians(solar_azimuth)
+    zenith_rad = math.radians(solar_zenith)
+    hillshade = ((np.cos(zenith_rad) * np.cos(slope)) + (np.sin(zenith_rad)* np.sin(slope) * np.cos(azimuth_rad - aspect)))
+    plt.imshow(hillshade)
+    plt.show()
 
-
-
-    return slope, aspect, hillshade
+    return slope, aspect, hillshade, azimuth_rad, zenith_rad
 
 
 

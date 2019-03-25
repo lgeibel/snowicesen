@@ -16,3 +16,6 @@ from rasterio.plot import show
 tile = rasterio.open("C:\\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\SWISS\cropped_reprojected_band.tif")
 fig, ax2 = plt.subplots()
 show(tile)
+
+
+ncdump -h dem_ts.nc

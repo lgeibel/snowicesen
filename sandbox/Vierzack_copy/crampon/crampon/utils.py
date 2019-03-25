@@ -1440,6 +1440,7 @@ def get_local_dems(gdir):
 
     # get already the dx to which the DEMs should be interpolated later on
     dx = dx_from_area(gdir.area_km2)
+    print("we are here")
     a_dem = _local_dem_to_xr_dataset(a_to_merge, a_acq_dates, dx)
     a_dem.to_netcdf(path=gdir.get_filepath('dem_ts'), mode='w',
                    group=cfg.NAMES['SWISSALTI2010'])
