@@ -1,22 +1,17 @@
 import snowicesat.cfg as cfg
 import snowicesat.utils as utils
 from oggm.utils import *
-
-from configobj import ConfigObj, ConfigObjError
-from sentinelsat import SentinelAPI
-import rasterio
 from rasterio.mask import mask as riomask
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio.crs import CRS
-from rasterio import Affine
+from rasterio.plot import show
 import glob
 import time
 import rasterio
 import fiona
 import xarray
 import geopandas as gpd
-import netCDF4
-import snowicesat.utils
+import matplotlib.pyplot as plt
 
 log = logging.getLogger(__name__)
 
@@ -34,8 +29,9 @@ def crop_sentinel_to_glacier(gdir):
                              'mosaic'))
     img_list = os.listdir(img_path)
     img_list = [os.path.join(img_path, band) for band in img_list]
-    dim_name = "bands"
-    dim_label = list(range(1,len(img_list)+1))
+    dim_name = "band"
+    dim_label = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06',
+         'B07', 'B08', 'B09', 'B10', 'B11', 'B12', 'B8A']
     var_name = 'img_values'
     time_stamp = cfg.PARAMS['date'][0]
     file_group = 'sentinel'
@@ -59,7 +55,7 @@ def crop_metadata_to_glacier(gdir):
         'meta'))
     img_list = os.listdir(img_path)
     img_list = [os.path.join(img_path, band) for band in img_list]
-    dim_name = "angles"
+    dim_name = "band"
     dim_label = ['solar_azimuth', 'solar_zenith']
     var_name = 'angles_in_deg'
     time_stamp = cfg.PARAMS['date'][0]
@@ -79,7 +75,7 @@ def crop_dem_to_glacier(gdir):
     img_path = cfg.PATHS['dem_dir']
     img_list = os.listdir(img_path)
     img_list = [os.path.join(img_path, band) for band in img_list]
-    dim_name = "height_rm"
+    dim_name = "band"
     dim_label = ['height_in_m']
     var_name = 'height_in_m'
     time_stamp = 20180101
@@ -130,6 +126,7 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
 
     # iterate over all bands
     b_sub = []
+    band_index = 0
     for band in img_list:
         with rasterio.open(band) as src:
             # Read crs from first Tile of list:
@@ -160,9 +157,7 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                                  "width": out_image.shape[2],
                                  "transform": out_transform})
 
-            with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',
-                                            str(cfg.PARAMS['date'][0]),
-                                            'cropped_cache'),'w', **out_meta) \
+            with rasterio.open(gdir.get_filepath('cropped_cache'),'w', **out_meta) \
                     as src1:
                 src1.write(out_image)
             # ---  2. REPROJECT to local grid: we want to project out_image with
@@ -179,10 +174,7 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                     'height': height
                 })
 
-            with rasterio.open(
-                        os.path.join(cfg.PATHS['working_dir'], 'cache',
-                                     str(cfg.PARAMS['date'][0]),
-                                     'cropped_cache'),
+            with rasterio.open(gdir.get_filepath('cropped_cache'),
                         'w', **out_meta) as src1:
 
                 reproject(
@@ -197,25 +189,24 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                 src1.write(out_image)
 
             # Open with xarray into DataArray
-        band_array = xarray.open_rasterio(
-            os.path.join(cfg.PATHS['working_dir'],'cache',
-            str(cfg.PARAMS['date'][0]),'cropped_cache')
-        )
-
-        band_array.attrs['pyproj_srs'] = band_array.crs
-        band_array.attrs['pyproj_srs'] = rasterio.crs.CRS.to_proj4(src.crs)
+        band_array = xarray.open_rasterio(gdir.get_filepath('cropped_cache'))
+        band_array = band_array.squeeze('band').drop('band')
+        band_array = band_array.assign_coords(band = dim_label[band_index])
+        band_array = band_array.expand_dims('band')
 
         # write all bands into list b_sub:
         b_sub.append(band_array)
+        band_index = band_index + 1
+
 
     # Merge all bands to write into netcdf file!
     all_bands = xr.concat(b_sub, dim=dim_name)
-    all_bands[dim_name] = dim_label
+   # all_bands[dim_name] = dim_label
     all_bands.name = var_name
 
     all_bands = all_bands.assign_coords(time=time_stamp)
     all_bands = all_bands.expand_dims('time')
-    all_bands = all_bands.squeeze('band').drop('band')
+   # all_bands = all_bands.squeeze('band').drop('band')
     all_bands_attrs = all_bands.attrs
 
     # check if netcdf file for this glacier already exists, create if not, append if exists
@@ -231,7 +222,6 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
         print('Open existing file')
         existing = xr.open_dataset(gdir.get_filepath(file_group))
         # Convert all_bands from DataArray to Dataset
-        print("Existing",existing)
         all_bands = all_bands.to_dataset(name=var_name)
         if all_bands.time.values in existing.time.values:
             print("date already exists, not writing again")
@@ -246,16 +236,8 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                                'w', format='NETCDF4',
                                unlimited_dims={'time': True})
 
-    # Remove cropped_cache.tif files:
-    cache_list = [filename for filename in glob.glob(
-                    os.path.join(cfg.PATHS['working_dir'],
-                                 'cache',
-                                  str(cfg.PARAMS['date'][0]),
-                                 'cropped_cache', '*.tif'),
-                    recursive=False)]
-    print(cache_list)
-    for f in cache_list:
-        os.remove(f)
+    # Remove cropped_cache.tif file:
+    os.remove(gdir.get_filepath('cropped_cache'))
 
 
 

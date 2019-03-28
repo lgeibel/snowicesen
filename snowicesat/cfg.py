@@ -88,8 +88,16 @@ _doc = 'A time series of all available DEMs for the glacier, brought to the ' \
 CBASENAMES['dem_ts'] = ('dem_ts.nc', _doc)
 _doc = 'A netcdf file containing all sentinel bands for given times for the glacier'
 CBASENAMES['sentinel'] =('sentinel.nc', _doc)
+_doc = 'A netcdf file containing all sentinel bands for given times for the glacier, ' \
+       'corrected with the Ekstrand terrain correction'
+CBASENAMES['ekstrand'] =('ekstrand.nc', _doc)
 _doc = 'A netcdf file containing solar zenith and solar azimuth angle for a glacier'
 CBASENAMES['solar_angles'] =('solar_angles.nc', _doc)
+
+_doc = 'A temporary geoTIFF file containing cache files while preparing sentinel data' \
+       ' for a glacier'
+CBASENAMES['cropped_cache'] =('cropped_cache.tif', _doc)
+
 
 
 CPARAMS['date'] = ['date']

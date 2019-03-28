@@ -14,20 +14,19 @@ from functools import partial
 import geopandas as gpd
 import shapely
 import salem
+from scipy import stats
 from oggm.core.gis import gaussian_blur, multi_to_poly,\
     _interp_polygon, _polygon_to_pix, define_glacier_region, glacier_masks
 from oggm.utils import get_topo_file
 import matplotlib.pyplot as plt
 import math
-
-import rasterio
-from rasterio.warp import reproject, Resampling
 try:
     # rasterio V > 1.0
     from rasterio.merge import merge as merge_tool
 except ImportError:
     from rasterio.tools.merge import merge as merge_tool
-from scipy.ndimage.interpolation import map_coordinates
+import rasterio
+from rasterio.plot import show
 
 
 # Module logger
@@ -114,99 +113,4 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
     if 'DEM_SOURCE' in towrite:
         del towrite['DEM_SOURCE']
     towrite.to_file(gdir.get_filepath('outlines'))
-
-
-@entity_task(log)
-def ekstrand_correction(gdir):
-    """
-    Performs Ekstrand Terrain correction of
-    scene in Glacier Directory
-       :param gdirs: :py:class:`crampon.GlacierDirectory`
-        A GlacierDirectory instance.
-    :return:
-    """
-    # Get slope, aspect and hillshade of Glacier Scene:
-    slope, aspect, hillshade, solar_azimuth, solar_zenith = calc_slope_aspect_hillshade(gdir)
-
-    # Peform linear regression after Ekstrand:
-    # x = ln(hillshade* cos(solar_zenith))
-
-def calc_slope_aspect_hillshade(gdir):
-    """
-    Reads dem_ts group('alti') to xarray, then
-    converts to data_array, calculate slope, aspect and
-    hillshade
-
-    :param gdirs: :py:class:`crampon.GlacierDirectory`
-        A GlacierDirectory instance.
-    :return: slope, aspect, hillshade, azimuth_rad, zenith_rad:
-                3-D numpy arrays of angles in radians
-
-    """
-
-    dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
-    #print("dem_ts = ", dem_ts)
-    elevation_grid = dem_ts.isel(time=0, height_rm=0).height_in_m.values
-    # Resample DEM to 10 Meter Resolution:
-    dx = dem_ts.attrs['res'][0]
-
-    # hillshade requires solar angles:
-    solar_angles = xr.open_dataset(gdir.get_filepath('solar_angles'))
-    solar_azimuth = solar_angles.sel(time=cfg.PARAMS['date'][0], angles='solar_azimuth').angles_in_deg.values
-    solar_zenith = solar_angles.sel(time=cfg.PARAMS['date'][0], angles='solar_zenith').angles_in_deg.values
-    print("solar angles", solar_azimuth.shape, solar_zenith.shape)
-
-    # Expand grid on boundaries to obtain raster in same shape after
-    # differentiating
-    z_bc = assign_bc(elevation_grid)
-    # Compute finite differences
-    slope_x = (z_bc[1:-1, 2:] - z_bc[1:-1, :-2]) / (2 * dx)
-    slope_y = (z_bc[2:, 1:-1] - z_bc[:-2, 1:-1]) / (2 * dx)
-
-    # Magnitude of slope in radians
-    slope = np.arctan(np.sqrt(slope_x ** 2 + slope_y ** 2))
-    # Aspect ratio in radians
-    aspect = np.arctan2(slope_y, slope_x)
-
-    print("slope", slope.shape)
-
-    # TODO: is slope in deg or in radians?
-    # TODO: double check elevation/Zenith!
-
-    # Convert solar angles from deg to rad:
-    azimuth_rad = math.radians(solar_azimuth)
-    zenith_rad = math.radians(solar_zenith)
-    hillshade = ((np.cos(zenith_rad) * np.cos(slope)) + (np.sin(zenith_rad)* np.sin(slope) * np.cos(azimuth_rad - aspect)))
-    plt.imshow(hillshade)
-    plt.show()
-
-    return slope, aspect, hillshade, azimuth_rad, zenith_rad
-
-
-
-def assign_bc(elev_grid):
-
-    """ Pads the boundaries of a grid
-     Boundary condition pads the boundaries with equivalent values
-     to the data margins, e.g. x[-1,1] = x[1,1]
-     This creates a grid 2 rows and 2 columns larger than the input
-    """
-
-    ny, nx = elev_grid.shape  # Size of array
-    z_bc = np.zeros((ny + 2, nx + 2))  # Create boundary condition array
-    z_bc[1:-1,1:-1] = elev_grid  # Insert old grid in center
-
-    #Assign boundary conditions - sides
-    z_bc[0, 1:-1] = elev_grid[0, :]
-    z_bc[-1, 1:-1] = elev_grid[-1, :]
-    z_bc[1:-1, 0] = elev_grid[:, 0]
-    z_bc[1:-1, -1] = elev_grid[:,-1]
-
-    #Assign boundary conditions - corners
-    z_bc[0, 0] = elev_grid[0, 0]
-    z_bc[0, -1] = elev_grid[0, -1]
-    z_bc[-1, 0] = elev_grid[-1, 0]
-    z_bc[-1, -1] = elev_grid[-1, 0]
-
-    return z_bc
 

@@ -202,6 +202,8 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
 
     # Iterate through all bands
     band_list = ["B{:02d}".format(i) for i in range(1, 13)]
+    band_list = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06',
+         'B07', 'B08', 'B09', 'B10', 'B11', 'B12', 'B8A']
     if tiles_downloaded > 0:
         if clear_cache:
             print("Removing old merged tiles from cache")
@@ -243,7 +245,7 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
 
                 #----- Reproject to 10 Meter resolution:
                 bands_60m = ['B01.tif', 'B09.tif', 'B10.tif']
-                bands_20m = ['B05.tif', 'B06.tif', 'B07.tif', 'B11.tif', 'B12.tif']
+                bands_20m = ['B05.tif', 'B06.tif', 'B07.tif', 'B11.tif', 'B12.tif', 'B8A.tif']
                 print("Current band is ",band)
                 if band+".tif" in bands_60m or band+".tif" in bands_20m:
                     if band+".tif" in bands_60m:

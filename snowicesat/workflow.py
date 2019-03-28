@@ -4,7 +4,7 @@ import os
 import logging
 import snowicesat.cfg as cfg
 from crampon import utils
-from snowicesat.preprocessing import gis
+from snowicesat.preprocessing import create_gdirs
 #from crampon.core.preprocessing import gis
 import crampon
 from shutil import rmtree
@@ -76,7 +76,7 @@ def init_glacier_regions_snowicesat(shapedf=None, reset=False, force=False, all_
                 new_gdirs.append((gdir, dict(entity=entity)))
             gdirs.append(gdir)
     # If not initialized, run the task in parallel
-    execute_entity_task(gis.define_glacier_region_snowicesat, new_gdirs)
+    execute_entity_task(create_gdirs.define_glacier_region_snowicesat, new_gdirs)
 
 
     return gdirs
