@@ -35,7 +35,7 @@ if __name__ == '__main__':
     # Only keep those glaciers to have smaller dataset
     rgidf = rgidf[rgidf.RGIId.isin([
 #        'RGI50-11.B4504',  # Gries
-        'RGI50-11.A54L36n', # Fiescher (Shaded)
+ #       'RGI50-11.A54L36n', # Fiescher (Shaded)
         'RGI50-11.B4312n-1',  # Rhone
  #       'RGI50-11.B5616n-1',  # Findelen
  #       'RGI50-11.A55F03',  # Plaine Morte
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     log.info('Number of glaciers: {}'.format(len(rgidf)))
 
     #Go - initialize working directories
-    gdirs = init_glacier_regions_snowicesat(rgidf, reset=True, force=True)
+    gdirs = init_glacier_regions_snowicesat(rgidf, reset=False, force=False)
     print("Done with init_glacier_regions")
 
 
@@ -67,11 +67,13 @@ if __name__ == '__main__':
         end_date_var = start_date_var+timedelta(days=1)
         if tiles_downloaded > 0:
             # Preprocessing tasks: only execute when new files were downloaded!
-            task_list = [tasks.crop_sentinel_to_glacier,
-                         tasks.crop_metadata_to_glacier,
-                         tasks.crop_dem_to_glacier,
-                         tasks.ekstrand_correction,
-                         tasks.cloud_masking]
+            task_list = [#tasks.crop_sentinel_to_glacier,
+                         #tasks.crop_metadata_to_glacier,
+                         #tasks.crop_dem_to_glacier,
+                         #tasks.ekstrand_correction,
+                         #tasks.cloud_masking,
+                         tasks.remove_sides
+                        ]
             for task in task_list:
                 execute_entity_task(task, gdirs)
 

@@ -4,6 +4,7 @@ from distutils.version import LooseVersion
 from salem import Grid, wgs84
 import os
 import numpy as np
+import numpy.ma as ma
 import pyproj
 import logging
 import xarray as xr
@@ -90,7 +91,7 @@ def ekstrand_correction(gdir):
                     np.cos(slope)) ** k_ekstrand
 
         #write corrected values to netcdf: update values
-        sentinel.sel(band=band_id, time=time_id).img_values.values = band_arr_correct_ekstrand
+        sentinel['img_values'].loc[(dict(band=band_id))] = band_arr_correct_ekstrand
 
      # Write Updated DataSet to file
 
@@ -205,64 +206,62 @@ def assign_bc(elev_grid):
 @entity_task(log)
 def cloud_masking(gdir):
     """
-    Masks cloud pixels with s2cloudless algorithm
+    Masks cloudy pixels with s2cloudless algorithm
 
     :param gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
     :return:
     """
 
-    cloud_detector = S2PixelCloudDetector(threshold=0.4, average_over=4, dilation_size=2)
-
-    #####
+    cloud_detector = S2PixelCloudDetector(threshold=0.4, average_over=3, dilation_size=2)
     sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
     wms_bands = sentinel.sel(
         band=['B01', 'B02', 'B04', 'B05', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'],
         time=cfg.PARAMS['date'][0])\
         .img_values.values
-    #####
-
-    ## Try whole scene? Impact of only processing one glacier?
-    wms_bands_all =[]
-    band_index = 0
-    for band in ['B01', 'B02', 'B04', 'B05', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12']:
-        with rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache',
-                                    str(cfg.PARAMS['date'][0]), 'mosaic',
-                                    str(band + '.tif'))) as src:
-            curr_band = src.read()
-            wms_bands_all.append(np.squeeze(curr_band))
-        band_index = band_index+1
-    wms_bands_all = np.stack(wms_bands_all)
-    wms_bands = wms_bands_all
-    ##
-
-    # create masked array
-    # goal :[height, width, channels]. now: channels, height, width
-    wms_bands = [np.transpose(wms_bands, (1,2,0)) for _ in range(1)]
+    # rearrange dimensions, goal :[height, width, channels].
+    #  now: [channels, height, width] and correct into to float (factor 10000)
+    wms_bands = [np.transpose(wms_bands/10000, (1,2,0)) for _ in range(1)]
     cloud_masks = cloud_detector.get_cloud_masks(np.array(wms_bands))
-    cloud_probability = cloud_detector.get_cloud_probability_maps(np.array(wms_bands))
-    plot_cloud_mask(cloud_masks[0], wms_bands, cloud_probability)
 
-    ## TRY: Threshold on Thermal band for glacier vs. clouds?
-    thermal = wms_bands[0][:,:,9]
-    clouds_thermal = thermal > 2000
-    clouds_thermal.astype(np.int)
+    # Apply cloudmask to scene:
+    for band_id in sentinel['band'].values:
+        band_array = sentinel.sel(band=[band_id],
+        time = cfg.PARAMS['date'][0]).img_values.values
+        band_array[cloud_masks == 1] = 0
+        sentinel['img_values'].loc[(dict(band=band_id))] = band_array
 
-    plt.imshow(wms_bands[0][:,:,9], cmap='gray')
-    plt.imshow(clouds_thermal, cmap = 'inferno', alpha=0.5)
-    plt.show()
+    # Write Updated DataSet to file
+    sentinel.to_netcdf(gdir.get_filepath('cloud_masked'))
+    shutil.move(gdir.get_filepath('cloud_masked'), gdir.get_filepath('sentinel'))
 
-    print("End of Cloud Masking")
-
-
-
-def plot_cloud_mask(mask, wms_bands, prob_map, figsize=(15, 15), fig=None):
+def plot_cloud_mask(mask, bands, prob_map, figsize=(15, 15), fig=None):
     """
     Utility function for plotting a binary cloud mask.
     """
     if fig == None:
         plt.figure(figsize=figsize)
-    plt.imshow(wms_bands[0][:,:,9], cmap='gray')
-    plt.imshow(mask, cmap='gray', alpha=0.5)
-    plt.imshow(prob_map[0], cmap=plt.cm.inferno, alpha=0.5)
+    plt.imshow(bands[:, : , 8], cmap='gray')
+    plt.imshow(mask, cmap='gray', alpha=0.9)
+#    plt.imshow(prob_map, cmap=plt.cm.inferno, alpha=0.9)
     plt.show()
+
+@entity_task(log)
+def remove_sides(gdir):
+    """
+    Removes dark sides of glaciers that the glacier mask sometimes does
+    not consider and that would lead to misclassification. Thresholding
+    suggested by Paul et al. , 2016: " Glacier remote sensing using sentinel-2.
+    part II: Mapping glacier extents and
+    surface facies and comparison to landsat 8"
+    :param gdir: :py:class:`crampon.GlacierDirectory`
+        A GlacierDirectory instance.
+    :return:
+    """
+    sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+    for band_id in sentinel['band'].values:
+        band_array = sentinel.sel(
+            band=band_id,
+            time=cfg.PARAMS['date'][0]) \
+            .img_values.values
+
