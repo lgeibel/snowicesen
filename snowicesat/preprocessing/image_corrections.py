@@ -91,9 +91,19 @@ def ekstrand_correction(gdir):
                     np.cos(slope)) ** k_ekstrand
 
         #write corrected values to netcdf: update values
-        sentinel['img_values'].loc[(dict(band=band_id))] = band_arr_correct_ekstrand
+        sentinel['img_values'].loc[(dict(band=band_id,
+                                         time=cfg.PARAMS['date'][0]))]\
+            = band_arr_correct_ekstrand
 
      # Write Updated DataSet to file
+    # i = 1
+    # for band_id in sentinel['band'].values:
+    #     print(band_id, i)
+    #     plt.subplot(4, 4, i)
+    #     time_id = cfg.PARAMS['date'][0]
+    #     plt.imshow(sentinel.sel(band=band_id, time=time_id).img_values.values)
+    #     i = i + 1
+    # plt.show()
 
     sentinel.to_netcdf(gdir.get_filepath('ekstrand'))
     shutil.move(gdir.get_filepath('ekstrand'), gdir.get_filepath('sentinel'))
@@ -229,7 +239,9 @@ def cloud_masking(gdir):
         band_array = sentinel.sel(band=[band_id],
         time = cfg.PARAMS['date'][0]).img_values.values
         band_array[cloud_masks == 1] = 0
-        sentinel['img_values'].loc[(dict(band=band_id))] = band_array
+        band_array = band_array[0,:,:]
+        sentinel['img_values'].loc[(dict(band=band_id, time=cfg.PARAMS['date'][0]))] = band_array
+
 
     # Write Updated DataSet to file
     sentinel.to_netcdf(gdir.get_filepath('cloud_masked'))
@@ -259,9 +271,42 @@ def remove_sides(gdir):
     :return:
     """
     sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
-    for band_id in sentinel['band'].values:
-        band_array = sentinel.sel(
+    band_array = {}
+    for band_id in sentinel['band'].values: # Read all bands as np arrays
+        band_array[band_id] = sentinel.sel(
             band=band_id,
             time=cfg.PARAMS['date'][0]) \
-            .img_values.values
+            .img_values.values/10000
+
+    # Calculate NDSI - normalized differencial snow index
+    NDSI = (band_array['B03']-band_array['B11'])/\
+           (band_array['B03']+band_array['B11'])
+    # Apply glacier tresholding as described in Paul et al. 2016
+    # for Sentinel Data
+    mask = (NDSI > 0.2) & \
+           (0 <= band_array['B04']/band_array['B11']) & \
+           (band_array['B02']/band_array['B04'] <= 1.2) & \
+           (0 <= band_array['B08']/band_array['B11'])
+
+    # Write into netCDF file again
+    for band_id in sentinel['band'].values:
+        band_array[band_id][mask == False] = 0
+        sentinel['img_values'].loc[
+            (dict(band=band_id, time=cfg.PARAMS['date'][0]))] \
+            = band_array[band_id]*10000
+
+    # i = 1
+    # for band_id in sentinel['band'].values:
+    #      print(band_id, i)
+    #      plt.subplot(4, 4, i)
+    #      time_id = cfg.PARAMS['date'][0]
+    #      plt.imshow(sentinel.sel(band=band_id, time=time_id).img_values.values)
+    #      i = i + 1
+    # plt.show()
+
+    # Write Updated DataSet to file
+    sentinel.to_netcdf(gdir.get_filepath('sentinel_temp'), 'w')
+    sentinel.close()
+    shutil.move(gdir.get_filepath('sentinel_temp'), gdir.get_filepath('sentinel'))
+
 

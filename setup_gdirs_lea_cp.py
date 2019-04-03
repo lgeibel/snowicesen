@@ -34,7 +34,7 @@ if __name__ == '__main__':
 
     # Only keep those glaciers to have smaller dataset
     rgidf = rgidf[rgidf.RGIId.isin([
-#        'RGI50-11.B4504',  # Gries
+ #       'RGI50-11.B4504',  # Gries
  #       'RGI50-11.A54L36n', # Fiescher (Shaded)
         'RGI50-11.B4312n-1',  # Rhone
  #       'RGI50-11.B5616n-1',  # Findelen
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     log.info('Number of glaciers: {}'.format(len(rgidf)))
 
     #Go - initialize working directories
-    gdirs = init_glacier_regions_snowicesat(rgidf, reset=False, force=False)
+    gdirs = init_glacier_regions_snowicesat(rgidf, reset=False, force=True)
     print("Done with init_glacier_regions")
 
 
@@ -72,7 +72,9 @@ if __name__ == '__main__':
                          #tasks.crop_dem_to_glacier,
                          #tasks.ekstrand_correction,
                          #tasks.cloud_masking,
-                         tasks.remove_sides
+                         #tasks.remove_sides,
+                         #tasks.otsu_tresholding,
+                         tasks.naegeli_snow_mapping
                         ]
             for task in task_list:
                 execute_entity_task(task, gdirs)

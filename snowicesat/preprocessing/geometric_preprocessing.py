@@ -232,9 +232,11 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
             appended.attrs = all_bands_attrs
             appended.attrs['pyproj_srs'] = rasterio.crs.CRS.to_proj4(src1.crs)
             #Write to file
-            appended.to_netcdf(gdir.get_filepath(file_group),
-                               'w', format='NETCDF4',
+            appended.to_netcdf(gdir.get_filepath("sentinel_temp"),
+                               'w',
                                unlimited_dims={'time': True})
+            shutil.move(gdir.get_filepath("sentinel_temp"), gdir.get_filepath(file_group))
+
 
     # Remove cropped_cache.tif file:
     os.remove(gdir.get_filepath('cropped_cache'))
