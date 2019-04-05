@@ -78,11 +78,11 @@ def ekstrand_correction(gdir):
         k_ekstrand, intercept, r_value, p_value, std_err = \
             stats.linregress(x_vec_rel, y_vec_rel)
 
-        # TODO: check which version is correct
+        # TODO: somehow correction is only on 1st band!!!
         # Different equations available - which one is correct?
         # Bippus (also used by Rastner:)
         band_arr_correct_bippus = band_arr*(np.cos(solar_zenith)/
-                                          np.cos(hillshade))**\
+                                          np.cos(hillshade)) ** \
                                  (k_ekstrand*np.cos(hillshade))
 
         # Ekstrand (also used by Goa - most likely correct):
@@ -94,42 +94,23 @@ def ekstrand_correction(gdir):
         sentinel['img_values'].loc[(dict(band=band_id,
                                          time=cfg.PARAMS['date'][0]))]\
             = band_arr_correct_ekstrand
-
-     # Write Updated DataSet to file
-    # i = 1
-    # for band_id in sentinel['band'].values:
-    #     print(band_id, i)
-    #     plt.subplot(4, 4, i)
-    #     time_id = cfg.PARAMS['date'][0]
-    #     plt.imshow(sentinel.sel(band=band_id, time=time_id).img_values.values)
-    #     i = i + 1
-    # plt.show()
-
-    sentinel.to_netcdf(gdir.get_filepath('ekstrand'))
-    shutil.move(gdir.get_filepath('ekstrand'), gdir.get_filepath('sentinel'))
-
-        # #plot to test
+        #plot to test
         # plt.figure(1)
-        # plt.subplot(121)
+        # plt.subplot(131)
         # plt.imshow(band_arr, cmap= 'gray')
         # plt.title("Band")
         # plt.colorbar()
-        #
-        # plt.subplot(122)
+        # plt.subplot(132)
         # plt.imshow(band_arr_correct_ekstrand, cmap= 'gray')
         # plt.colorbar()
         # plt.title("Ekstrand corrected band")
-        #
+        # plt.subplot(133)
+        # plt.imshow(band_arr-band_arr_correct_bippus, cmap='gray')
+        # plt.colorbar()
+        # plt.title("Difference Band - Ekstrand Correction")
         # plt.show()
-
-        # # TODO: sensitivity analysis for scene with k between 0 and 1
-        # k_range = list(np.arange(0.01,1,0.01))
-        # band_arr_correct = np.zeros((len(k_range), band_arr.shape[0], band_arr.shape[1]))
-        # print(k_range)
-        # for k in k_range:
-        #     print(k)
-        #     band_arr_correct[k*100, :, :] = band_arr * np.cos(slope) * np.float_power(
-        #         np.cos(solar_zenith) / np.cos(hillshade) / np.cos(slope), k)
+    sentinel.to_netcdf(gdir.get_filepath('ekstrand'))
+ #   shutil.move(gdir.get_filepath('ekstrand'), gdir.get_filepath('sentinel'))
 
 def calc_slope_aspect_hillshade(gdir):
     """
@@ -145,7 +126,6 @@ def calc_slope_aspect_hillshade(gdir):
 
     dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
     elevation_grid = dem_ts.isel(time=0, band=0).height_in_m.values
-    # Resample DEM to 10 Meter Resolution:
     dx = dem_ts.attrs['res'][0]
 
     # hillshade requires solar angles:
@@ -168,7 +148,7 @@ def calc_slope_aspect_hillshade(gdir):
     # Compute finite differences
     slope_x = (z_bc[1:-1, 2:] - z_bc[1:-1, :-2]) / (2 * dx)
     slope_y = (z_bc[2:, 1:-1] - z_bc[:-2, 1:-1]) / (2 * dx)
-    # Magnitude of slope in radians
+    # Magnitude of slope
     slope = np.arctan(np.sqrt(slope_x ** 2 + slope_y ** 2))
     # Aspect ratio in radians
     aspect = np.arctan2(slope_y, slope_x)
@@ -223,8 +203,8 @@ def cloud_masking(gdir):
     :return:
     """
 
-    cloud_detector = S2PixelCloudDetector(threshold=0.4, average_over=3, dilation_size=2)
-    sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+    cloud_detector = S2PixelCloudDetector(threshold=0.6, average_over=4, dilation_size=3)
+    sentinel = xr.open_dataset(gdir.get_filepath('ekstrand'))
     wms_bands = sentinel.sel(
         band=['B01', 'B02', 'B04', 'B05', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'],
         time=cfg.PARAMS['date'][0])\
@@ -234,6 +214,10 @@ def cloud_masking(gdir):
     wms_bands = [np.transpose(wms_bands/10000, (1,2,0)) for _ in range(1)]
     cloud_masks = cloud_detector.get_cloud_masks(np.array(wms_bands))
 
+    #TODO: remove single pixels from cloud mask
+#    cloud_probability = cloud_detector.get_cloud_probability_maps(np.array(wms_bands))
+#    plot_cloud_mask(cloud_probability ,wms_bands)
+
     # Apply cloudmask to scene:
     for band_id in sentinel['band'].values:
         band_array = sentinel.sel(band=[band_id],
@@ -242,20 +226,21 @@ def cloud_masking(gdir):
         band_array = band_array[0,:,:]
         sentinel['img_values'].loc[(dict(band=band_id, time=cfg.PARAMS['date'][0]))] = band_array
 
+    # TODO: raster? Wo kommt es her?
 
     # Write Updated DataSet to file
     sentinel.to_netcdf(gdir.get_filepath('cloud_masked'))
-    shutil.move(gdir.get_filepath('cloud_masked'), gdir.get_filepath('sentinel'))
+#    shutil.move(gdir.get_filepath('cloud_masked'), gdir.get_filepath('sentinel'))
 
-def plot_cloud_mask(mask, bands, prob_map, figsize=(15, 15), fig=None):
+def plot_cloud_mask(mask, bands, figsize=(15, 15), fig=None):
     """
     Utility function for plotting a binary cloud mask.
     """
     if fig == None:
         plt.figure(figsize=figsize)
-    plt.imshow(bands[:, : , 8], cmap='gray')
-    plt.imshow(mask, cmap='gray', alpha=0.9)
-#    plt.imshow(prob_map, cmap=plt.cm.inferno, alpha=0.9)
+    plt.imshow(bands[0][0:, :, 8], cmap='gray')
+    plt.imshow(mask[0, :, :], cmap=plt.cm.inferno, alpha=0.5)
+    plt.colorbar()
     plt.show()
 
 @entity_task(log)
@@ -270,7 +255,7 @@ def remove_sides(gdir):
         A GlacierDirectory instance.
     :return:
     """
-    sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+    sentinel = xr.open_dataset(gdir.get_filepath('cloud_masked'))
     band_array = {}
     for band_id in sentinel['band'].values: # Read all bands as np arrays
         band_array[band_id] = sentinel.sel(
@@ -283,11 +268,12 @@ def remove_sides(gdir):
            (band_array['B03']+band_array['B11'])
     # Apply glacier tresholding as described in Paul et al. 2016
     # for Sentinel Data
-    mask = (NDSI > 0.2) & \
-           (0 <= band_array['B04']/band_array['B11']) & \
-           (band_array['B02']/band_array['B04'] <= 1.2) & \
-           (0 <= band_array['B08']/band_array['B11'])
+    mask = (NDSI > 0.2) #& \
+#           (0 <= band_array['B04']/band_array['B11']) & \
+#           (band_array['B02']/band_array['B04'] <= 1.2) & \
+#           (0 <= band_array['B08']/band_array['B11'])
 
+# TODOD: check side removal issues...
     # Write into netCDF file again
     for band_id in sentinel['band'].values:
         band_array[band_id][mask == False] = 0
@@ -295,18 +281,12 @@ def remove_sides(gdir):
             (dict(band=band_id, time=cfg.PARAMS['date'][0]))] \
             = band_array[band_id]*10000
 
-    # i = 1
-    # for band_id in sentinel['band'].values:
-    #      print(band_id, i)
-    #      plt.subplot(4, 4, i)
-    #      time_id = cfg.PARAMS['date'][0]
-    #      plt.imshow(sentinel.sel(band=band_id, time=time_id).img_values.values)
-    #      i = i + 1
-    # plt.show()
+        time_id = cfg.PARAMS['date'][0]
+
 
     # Write Updated DataSet to file
     sentinel.to_netcdf(gdir.get_filepath('sentinel_temp'), 'w')
     sentinel.close()
-    shutil.move(gdir.get_filepath('sentinel_temp'), gdir.get_filepath('sentinel'))
+#    shutil.move(gdir.get_filepath('sentinel_temp'), gdir.get_filepath('sentinel'))
 
 

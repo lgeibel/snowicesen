@@ -133,12 +133,6 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
         cr['sentinel']['password'],
         api_url="https://scihub.copernicus.eu/apihub/")
 
-    # Create cache directory for this date:
-    if not os.path.exists(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]))):
-        print('creating new folder for this date')
-        os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0])))
-        os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]), 'mosaic'))
-
     # 2. Geodataframe containing all glaciers:
     # Reproject to  WGS 84 Grid for query (requested by sentinelsat module):
     glacier = glacier.to_crs({'init': 'epsg:4326'})
@@ -167,6 +161,12 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
           "GB.")
         tiles_downloaded = 0
         if not len(products) is 0: # If products are available, download them:
+            # Create cache directory for this date:
+            if not os.path.exists(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]))):
+                print('creating new folder for this date')
+                os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0])))
+                os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]), 'mosaic'))
+
             product_id = list(products.keys())
             tiles_downloaded += 1
             print('Downloaded Tiles: ',tiles_downloaded)
