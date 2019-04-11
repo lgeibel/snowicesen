@@ -34,12 +34,12 @@ if __name__ == '__main__':
 
     # Only keep those glaciers to have smaller dataset
     rgidf = rgidf[rgidf.RGIId.isin([
- #       'RGI50-11.B4504',  # Gries
+        'RGI50-11.B4504',  # Gries
         'RGI50-11.A54L36n', # Fiescher (Shaded)
         'RGI50-11.B4312n-1',  # Rhone
  #       'RGI50-11.B5616n-1',  # Findelen
  #       'RGI50-11.A55F03',  # Plaine Morte
- #       'RGI50-11.C1410',  # Basodino
+        'RGI50-11.C1410',  # Basodino
  #       'RGI50-11.A10G05',  # Silvretta
         'RGI50-11.B3626-1'  # Gr. Aletsch
         ])]
@@ -72,7 +72,7 @@ if __name__ == '__main__':
                          #tasks.crop_dem_to_glacier,  # output: dem_ts.nc
                          #tasks.ekstrand_correction, # output: ekstrand.nc
                          #tasks.cloud_masking, # ouput: cloud_masked.nc
-                         tasks.remove_sides, # output: sentinel_temp.nc
+                         #tasks.remove_sides, # output: sentinel_temp.nc
                          tasks.otsu_tresholding,
                          tasks.naegeli_snow_mapping
                         ]

@@ -110,6 +110,7 @@ def ekstrand_correction(gdir):
         # plt.title("Difference Band - Ekstrand Correction")
         # plt.show()
     sentinel.to_netcdf(gdir.get_filepath('ekstrand'))
+    sentinel.close()
  #   shutil.move(gdir.get_filepath('ekstrand'), gdir.get_filepath('sentinel'))
 
 def calc_slope_aspect_hillshade(gdir):
@@ -230,6 +231,7 @@ def cloud_masking(gdir):
 
     # Write Updated DataSet to file
     sentinel.to_netcdf(gdir.get_filepath('cloud_masked'))
+    sentinel.close()
 #    shutil.move(gdir.get_filepath('cloud_masked'), gdir.get_filepath('sentinel'))
 
 def plot_cloud_mask(mask, bands, figsize=(15, 15), fig=None):
