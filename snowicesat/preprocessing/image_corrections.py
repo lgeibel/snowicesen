@@ -46,17 +46,24 @@ def ekstrand_correction(gdir):
     :return:
     """
     # Get slope, aspect and hillshade of Glacier Scene:
-    slope, aspect, hillshade, solar_azimuth, solar_zenith =\
+    try:
+        slope, aspect, hillshade, solar_azimuth, solar_zenith =\
         calc_slope_aspect_hillshade(gdir)
+    except TypeError:
+        print("Break out of Ekstrand Correction")
+        return
 
     # Open satellite image:
-    sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+    try:
+        sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+    except FileNotFoundError:
+        # if no sentinel file exists:
+        return
     b_sub = []
     # Loop over all bands:
     for band_id in sentinel['band'].values:
         time_id = cfg.PARAMS['date'][0]
         band_arr = sentinel.sel(band=band_id, time=time_id).img_values.values
-
         # Prepare data for linear regression after Ekstrand
         # (for equation see Gao et. al, 2015:
         #  "An improved topographic correction model based on Minnaert"
@@ -64,31 +71,37 @@ def ekstrand_correction(gdir):
         # axis values regression:
         x = np.log(hillshade * np.cos(solar_zenith))
         # y values for regression
-        y = np.log(band_arr * np.cos(solar_zenith))
+        try:
+            y = np.log(band_arr * np.cos(solar_zenith))
+            # Reshape x, y to be vector instead of tensor:
+            x_vec = np.reshape(x, x.size)
+            y_vec = np.reshape(y, y.size)
 
-        # Reshape x, y to be vector instead of tensor:
-        x_vec = np.reshape(x, x.size)
-        y_vec = np.reshape(y, y.size)
+            # Remove NaN values, only keep relevant pixels for regression:
+            x_vec_rel = x_vec[np.isfinite(y_vec) & np.isfinite(x_vec)]
+            y_vec_rel = y_vec[np.isfinite(y_vec) & np.isfinite(x_vec)]
 
-        # Remove NaN values, only keep relevant pixels for regression:
-        x_vec_rel = x_vec[np.isfinite(y_vec) & np.isfinite(x_vec)]
-        y_vec_rel = y_vec[np.isfinite(y_vec) & np.isfinite(x_vec)]
+            # Linear regression:
+            k_ekstrand, intercept, r_value, p_value, std_err = \
+                stats.linregress(x_vec_rel, y_vec_rel)
 
-        # Linear regression:
-        k_ekstrand, intercept, r_value, p_value, std_err = \
-            stats.linregress(x_vec_rel, y_vec_rel)
+            # TODO: somehow correction is only on 1st band!!!
+            # Different equations available - which one is correct?
+            # Bippus (also used by Rastner:)
+            band_arr_correct_bippus = band_arr * (np.cos(solar_zenith) /
+                                                  np.cos(hillshade)) ** \
+                                      (k_ekstrand * np.cos(hillshade))
 
-        # TODO: somehow correction is only on 1st band!!!
-        # Different equations available - which one is correct?
-        # Bippus (also used by Rastner:)
-        band_arr_correct_bippus = band_arr*(np.cos(solar_zenith)/
-                                          np.cos(hillshade)) ** \
-                                 (k_ekstrand*np.cos(hillshade))
-
-        # Ekstrand (also used by Goa - most likely correct):
-        band_arr_correct_ekstrand = band_arr * np.cos(slope) * (
+            # Ekstrand (also used by Goa - most likely correct):
+            band_arr_correct_ekstrand = band_arr * np.cos(slope) * (
                     np.cos(solar_zenith) / np.cos(hillshade) /
                     np.cos(slope)) ** k_ekstrand
+        except ValueError:
+            print("Something wrong, we need to stop here", gdir)
+            # very few data seem to have wrong solar angle data
+            # --> simply using uncorrected values for this for now...
+            band_arr_correct_ekstrand = band_arr
+            band_arr_correct_bippus = band_arr
 
         #write corrected values to netcdf: update values
         sentinel['img_values'].loc[(dict(band=band_id,
@@ -130,20 +143,37 @@ def calc_slope_aspect_hillshade(gdir):
     dx = dem_ts.attrs['res'][0]
 
     # hillshade requires solar angles:
-    solar_angles = xr.open_dataset(gdir.get_filepath('solar_angles'))
-    solar_azimuth = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_azimuth')\
-        .angles_in_deg.values
-    solar_zenith = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_zenith')\
-        .angles_in_deg.values
+    try:
+        solar_angles = xr.open_dataset(gdir.get_filepath('solar_angles'))
+        solar_azimuth = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_azimuth')\
+             .angles_in_deg.values
+        solar_zenith = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_zenith')\
+             .angles_in_deg.values
+    except FileNotFoundError:
+        print('Break out of hillshade fct.')
+        return
+
 
     if solar_zenith.shape != elevation_grid.shape:
         print("Solar Angles and DEM grid have different size. "
-              "Pixel difference:", solar_zenith.shape[0]-elevation_grid.shape[0],", ",
+              "Pixel difference:", solar_zenith.shape[0]-elevation_grid.shape[0], ", ",
               solar_zenith.shape[1]-elevation_grid.shape[1],
               "Will be adapted to same grid size")
-        elevation_grid = elevation_grid[0:solar_zenith.shape[0], 0:solar_zenith.shape[1]]
+        if elevation_grid.shape[0] > solar_zenith.shape[0] or \
+                elevation_grid.shape[1] > solar_zenith.shape[1]: # Shorten elevation grid
+            elevation_grid = elevation_grid[0:solar_zenith.shape[0], 0:solar_zenith.shape[1]]
+        if elevation_grid.shape[0] < solar_zenith.shape[0]: # Extend elevation grid: append row:
+            print('Adding row')
+            elevation_grid = np.append(elevation_grid,
+                                       [elevation_grid[(elevation_grid.shape[0]-
+                                                     solar_zenith.shape[0]), :]], axis = 0)
+        if elevation_grid.shape[1] < solar_zenith.shape[1]: # append column
+            print('Adding column')
+            b = elevation_grid[:, (elevation_grid.shape[1]-
+                                   solar_zenith.shape[1])].reshape(elevation_grid.shape[0], 1)
+            elevation_grid = np.hstack((elevation_grid, b))
+                # Expand grid on boundaries to obtain raster in same shape after
 
-    # Expand grid on boundaries to obtain raster in same shape after
     # differentiating
     z_bc = assign_bc(elevation_grid)
     # Compute finite differences
@@ -159,7 +189,7 @@ def calc_slope_aspect_hillshade(gdir):
     zenith_rad = np.radians(solar_zenith)
 
     hillshade = (np.cos(zenith_rad) * np.cos(slope)) + \
-                (np.sin(zenith_rad)* np.sin(slope) *
+                (np.sin(zenith_rad) * np.sin(slope) *
                  np.cos(azimuth_rad - aspect))
     #plt.imshow(hillshade)
     #plt.show()
@@ -205,7 +235,11 @@ def cloud_masking(gdir):
     """
 
     cloud_detector = S2PixelCloudDetector(threshold=0.6, average_over=4, dilation_size=3)
-    sentinel = xr.open_dataset(gdir.get_filepath('ekstrand'))
+    try:
+        sentinel = xr.open_dataset(gdir.get_filepath('ekstrand'))
+    except FileNotFoundError:
+        print("Break out of cloud masking")
+        return
     wms_bands = sentinel.sel(
         band=['B01', 'B02', 'B04', 'B05', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'],
         time=cfg.PARAMS['date'][0])\
@@ -257,7 +291,11 @@ def remove_sides(gdir):
         A GlacierDirectory instance.
     :return:
     """
-    sentinel = xr.open_dataset(gdir.get_filepath('cloud_masked'))
+    try:
+        sentinel = xr.open_dataset(gdir.get_filepath('cloud_masked'))
+    except FileNotFoundError:
+        print("Break out of remove_side")
+        return
     band_array = {}
     for band_id in sentinel['band'].values: # Read all bands as np arrays
         band_array[band_id] = sentinel.sel(

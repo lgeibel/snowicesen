@@ -12,6 +12,7 @@ from datetime import timedelta
 from snowicesat.utils import datetime_to_int, int_to_datetime, extract_metadata
 import glob
 import os
+import random
 
 
 logging.basicConfig(format='%(asctime)s: %(name)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=logging.DEBUG)
@@ -31,18 +32,22 @@ cfg.PARAMS['mp_processes'] = 4
 
 if __name__ == '__main__':
     rgidf = gpd.read_file(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\outlines\rgi_copy.shp")
+    # Ignore all values glaciers smaller than 0.2 km^2
+    rgidf = rgidf.loc[rgidf['Area'] > 0.2]
+    rgidf = rgidf.sample(n=50)
 
     # Only keep those glaciers to have smaller dataset
-    rgidf = rgidf[rgidf.RGIId.isin([
-        'RGI50-11.B4504',  # Gries
-        'RGI50-11.A54L36n', # Fiescher (Shaded)
-        'RGI50-11.B4312n-1',  # Rhone
- #       'RGI50-11.B5616n-1',  # Findelen
+ #   rgidf = rgidf[rgidf.RGIId.isin([
+ #       'RGI50-11.B4504'  # Gries
+ #       'RGI50-11.A54L36n', # Fiescher (Shaded)
+ #       'RGI50-11.B4312n-1',  # Rhone
+ ##       'RGI50-11.B5616n-1',  # Findelen
  #       'RGI50-11.A55F03',  # Plaine Morte
-        'RGI50-11.C1410',  # Basodino
+ #       'RGI50-11.C1410',  # Basodino
  #       'RGI50-11.A10G05',  # Silvretta
-        'RGI50-11.B3626-1'  # Gr. Aletsch
-        ])]
+ #       'RGI50-11.B3626-1'  # Gr. Aletsch
+ #       ])]
+
 
     log.info('Number of glaciers: {}'.format(len(rgidf)))
 
@@ -61,19 +66,18 @@ if __name__ == '__main__':
         tiles_downloaded = download_all_tiles(rgidf,
                                               clear_cache=False,
                                               clear_safe=False)  # Function in utils
-       # tiles_downloaded = 1
         # move one day ahead
         start_date_var = start_date_var+timedelta(days=1)
         end_date_var = start_date_var+timedelta(days=1)
         if tiles_downloaded > 0:
-            # Preprocessing tasks: only execute when new files were downloaded!
+            # Processing tasks: only execute when new files were downloaded!
             task_list = [#tasks.crop_sentinel_to_glacier, # output: sentinel.nc
                          #tasks.crop_metadata_to_glacier, # output: solar_angles.nc
                          #tasks.crop_dem_to_glacier,  # output: dem_ts.nc
                          #tasks.ekstrand_correction, # output: ekstrand.nc
                          #tasks.cloud_masking, # ouput: cloud_masked.nc
                          #tasks.remove_sides, # output: sentinel_temp.nc
-                         tasks.otsu_tresholding,
+                         tasks.asmag_snow_mapping,
                          tasks.naegeli_snow_mapping
                         ]
             for task in task_list:

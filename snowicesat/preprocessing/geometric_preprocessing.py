@@ -148,9 +148,14 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                     # Read local geometry
                     features = [feature["geometry"] for feature in glacier_reprojected]
 
-            # --- 1.   Open Sentinel file: CROP file to glacier outline
-            out_image, out_transform = rasterio.mask.mask(src, features,
+            # --- 1.   Open file: CROP file to glacier outline
+
+            try:
+                out_image, out_transform = rasterio.mask.mask(src, features,
                                                               crop=True)
+            except ValueError:
+                print("We handle our value error. Exit function for this date")
+                return
             out_meta = src.meta.copy()
             out_meta.update({"driver": "GTiff",
                                  "height": out_image.shape[1],

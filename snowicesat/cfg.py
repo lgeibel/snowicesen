@@ -105,7 +105,8 @@ CBASENAMES['snow_cover'] =('snow_cover.nc', _doc)
 _doc = 'A temporary geoTIFF file containing cache files while preparing sentinel data' \
        ' for a glacier'
 CBASENAMES['cropped_cache'] =('cropped_cache.tif', _doc)
-
+_doc = 'Figure containing all mapped snow cover'
+CBASENAMES['plt_snowcover'] = ('plot_snow.png', _doc)
 
 
 CPARAMS['date'] = ['date']

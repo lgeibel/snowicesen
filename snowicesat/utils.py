@@ -139,10 +139,31 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
     # Create bounding box/envelope as polygon, safe to geojson file
     bbox = glacier.envelope
 
-    for index in bbox:
+    bbox = bbox.total_bounds
+    p1 = shapely.geometry.Point(bbox[0], bbox[1])
+    p2 = shapely.geometry.Point(bbox[2], bbox[1])
+    p3 = shapely.geometry.Point(bbox[2], bbox[3])
+    p4 = shapely.geometry.Point(bbox[0], bbox[3])
+
+    pointList = [p1, p2, p3, p4, p1]
+    index = shapely.geometry.Polygon([[p.x, p.y] for p in pointList])
+    # Define a polygon feature geometry with one attribute
+    schema = {
+        'geometry': 'Polygon',
+        'properties': {'id': 'int'},
+    }
+
+    # Write a new Shapefile
+    with fiona.open('my_shp2.shp', 'w', 'ESRI Shapefile', schema) as c:
+        c.write({
+            'geometry': shapely.geometry.mapping(index),
+            'properties': {'id': 123},
+        })
+
+    #for index in bbox:
     # Iterate over each item in the glacier list,
     # Search for products matching query
-        products = api.query(area=index, #geojson_to_wkt(read_geojson(bbox_filename))
+    products = api.query(area=index, #geojson_to_wkt(read_geojson(bbox_filename))
                          date=(tuple(str(item) for item in cfg.PARAMS['date'])),
                          platformname="Sentinel-2",
                          producttype="S2MSI1C",
@@ -150,49 +171,49 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                                                                   cfg.PARAMS['cloudcover'][1]))
 
     # Count number of products matching query and their size
-        print("Sentinel Tiles found:", api.count(area=index,
+    print("Sentinel Tiles found:", api.count(area=index,
                                              date=(tuple(str(item) for item in cfg.PARAMS['date'])),
                                              platformname="Sentinel-2",
                                              producttype="S2MSI1C",
                                              cloudcoverpercentage="[{} TO {}]".
                                                  format(cfg.PARAMS['cloudcover'][0],
                                                  cfg.PARAMS['cloudcover'][1])),
-          ", Total size: ", api.get_products_size(products),
-          "GB.")
-        tiles_downloaded = 0
-        if not len(products) is 0: # If products are available, download them:
+      ", Total size: ", api.get_products_size(products),
+      "GB.")
+    tiles_downloaded = 0
+    if not len(products) is 0: # If products are available, download them:
             # Create cache directory for this date:
-            if not os.path.exists(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]))):
-                print('creating new folder for this date')
-                os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0])))
-                os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]), 'mosaic'))
+        if not os.path.exists(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]))):
+             print('creating new folder for this date')
+             os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0])))
+             os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]), 'mosaic'))
 
-            product_id = list(products.keys())
-            tiles_downloaded += 1
-            print('Downloaded Tiles: ',tiles_downloaded)
-            for index in product_id:
-                safe_name = products[index]['filename']
-                print(safe_name)
-                if not os.path.isdir(os.path.join(cfg.PATHS['working_dir'],'cache',
-                                                  str(cfg.PARAMS['date'][0]), safe_name)):
-                    #  If not downloaded: downloading all products
-                    print("exists:",os.path.join(cfg.PATHS['working_dir'], 'cache',
-                                                 str(cfg.PARAMS['date'][0]),safe_name))
-                    download_zip = api.download(index,
-                                                directory_path=os.path.join(
-                                                    cfg.PATHS['working_dir'],
-                                                    'cache',str(cfg.PARAMS['date'][0])))
+        product_id = list(products.keys())
+        tiles_downloaded += 1
+        print('Downloaded Tiles: ',tiles_downloaded)
+        for index in product_id:
+            safe_name = products[index]['filename']
+            print(safe_name)
+            if not os.path.isdir(os.path.join(cfg.PATHS['working_dir'],'cache',
+                                              str(cfg.PARAMS['date'][0]), safe_name)):
+                #  If not downloaded: downloading all products
+                print("exists:",os.path.join(cfg.PATHS['working_dir'], 'cache',
+                                             str(cfg.PARAMS['date'][0]),safe_name))
+                download_zip = api.download(index,
+                                            directory_path=os.path.join(
+                                                cfg.PATHS['working_dir'],
+                                                'cache',str(cfg.PARAMS['date'][0])))
                     # Unzip files into .safe directory, delete .zip folder
-                    with zipfile.ZipFile(os.path.join(cfg.PATHS['working_dir'],'cache',
-                                                      str(cfg.PARAMS['date'][0]),
-                                                      download_zip['path'])) \
-                            as zip_file:
-                        zip_file.extractall(os.path.join(cfg.PATHS['working_dir'],
-                                                         'cache', str(cfg.PARAMS['date'][0])))
-                    os.remove(os.path.join(cfg.PATHS['working_dir'],'cache',
-                                           str(cfg.PARAMS['date'][0]), download_zip['path']))
-                else:
-                    print("Tile is downloaded already")
+                with zipfile.ZipFile(os.path.join(cfg.PATHS['working_dir'],'cache',
+                                                  str(cfg.PARAMS['date'][0]),
+                                                  download_zip['path'])) \
+                        as zip_file:
+                    zip_file.extractall(os.path.join(cfg.PATHS['working_dir'],
+                                                     'cache', str(cfg.PARAMS['date'][0])))
+                os.remove(os.path.join(cfg.PATHS['working_dir'],'cache',
+                                       str(cfg.PARAMS['date'][0]), download_zip['path']))
+            else:
+                print("Tile is downloaded already")
 
     # Check if file already exists:
 
@@ -374,7 +395,6 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                                                             recursive=False)]
             for f in safe_list:
                 shutil.rmtree(f)
-
 
 
     return tiles_downloaded
