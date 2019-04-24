@@ -11,6 +11,7 @@ import xarray as xr
 from crampon import entity_task
 from crampon import utils
 import snowicesat.cfg as cfg
+import snowicesat.utils as utils
 from functools import partial
 import geopandas as gpd
 import shapely
@@ -175,7 +176,7 @@ def calc_slope_aspect_hillshade(gdir):
                 # Expand grid on boundaries to obtain raster in same shape after
 
     # differentiating
-    z_bc = assign_bc(elevation_grid)
+    z_bc = utils.assign_bc(elevation_grid)
     # Compute finite differences
     slope_x = (z_bc[1:-1, 2:] - z_bc[1:-1, :-2]) / (2 * dx)
     slope_y = (z_bc[2:, 1:-1] - z_bc[:-2, 1:-1]) / (2 * dx)
@@ -197,32 +198,6 @@ def calc_slope_aspect_hillshade(gdir):
     return slope, aspect, hillshade, azimuth_rad, zenith_rad
 
 
-
-def assign_bc(elev_grid):
-
-    """ Pads the boundaries of a grid
-     Boundary condition pads the boundaries with equivalent values
-     to the data margins, e.g. x[-1,1] = x[1,1]
-     This creates a grid 2 rows and 2 columns larger than the input
-    """
-
-    ny, nx = elev_grid.shape  # Size of array
-    z_bc = np.zeros((ny + 2, nx + 2))  # Create boundary condition array
-    z_bc[1:-1,1:-1] = elev_grid  # Insert old grid in center
-
-    #Assign boundary conditions - sides
-    z_bc[0, 1:-1] = elev_grid[0, :]
-    z_bc[-1, 1:-1] = elev_grid[-1, :]
-    z_bc[1:-1, 0] = elev_grid[:, 0]
-    z_bc[1:-1, -1] = elev_grid[:,-1]
-
-    #Assign boundary conditions - corners
-    z_bc[0, 0] = elev_grid[0, 0]
-    z_bc[0, -1] = elev_grid[0, -1]
-    z_bc[-1, 0] = elev_grid[-1, 0]
-    z_bc[-1, -1] = elev_grid[-1, 0]
-
-    return z_bc
 
 @entity_task(log)
 def cloud_masking(gdir):
@@ -249,7 +224,6 @@ def cloud_masking(gdir):
     wms_bands = [np.transpose(wms_bands/10000, (1,2,0)) for _ in range(1)]
     cloud_masks = cloud_detector.get_cloud_masks(np.array(wms_bands))
 
-    #TODO: remove single pixels from cloud mask
 #    cloud_probability = cloud_detector.get_cloud_probability_maps(np.array(wms_bands))
 #    plot_cloud_mask(cloud_probability ,wms_bands)
 
@@ -257,11 +231,23 @@ def cloud_masking(gdir):
     for band_id in sentinel['band'].values:
         band_array = sentinel.sel(band=[band_id],
         time = cfg.PARAMS['date'][0]).img_values.values
+        # Set threshold to exclude glaciers with more than 60% cloud cover
+        #  -> no useful classification possible
+        band_array_new = band_array
         band_array[cloud_masks == 1] = 0
+        cloud_cover = 1 - len(band_array[band_array > 0])/len(band_array_new[band_array_new>0])
+        plt.subplot(121)
+        plt.imshow(band_array_new[0, :, :])
+        plt.subplot(122)
+        plt.imshow(band_array[0, :, :])
+        plt.show()
+
+        print("Cloud_cover: ", cloud_cover)
+        if cloud_cover > 0.6:
+            # -> set all pixels to 0
+            band_array.fill(0)
         band_array = band_array[0,:,:]
         sentinel['img_values'].loc[(dict(band=band_id, time=cfg.PARAMS['date'][0]))] = band_array
-
-    # TODO: raster? Wo kommt es her?
 
     # Write Updated DataSet to file
     sentinel.to_netcdf(gdir.get_filepath('cloud_masked'))

@@ -517,3 +517,28 @@ def resample_meta(solar_zenith, solar_azimuth, index):
             dest.write(newarr, indexes=1)
         id = id + 1
 
+def assign_bc(elev_grid):
+    """ Pads the boundaries of a grid
+     Boundary condition pads the boundaries with equivalent values
+     to the data margins, e.g. x[-1,1] = x[1,1]
+     This creates a grid 2 rows and 2 columns larger than the input
+     Necessary when computing 2-D slopes
+    """
+
+    ny, nx = elev_grid.shape  # Size of array
+    z_bc = np.zeros((ny + 2, nx + 2))  # Create boundary condition array
+    z_bc[1:-1,1:-1] = elev_grid  # Insert old grid in center
+
+    #Assign boundary conditions - sides
+    z_bc[0, 1:-1] = elev_grid[0, :]
+    z_bc[-1, 1:-1] = elev_grid[-1, :]
+    z_bc[1:-1, 0] = elev_grid[:, 0]
+    z_bc[1:-1, -1] = elev_grid[:,-1]
+
+    #Assign boundary conditions - corners
+    z_bc[0, 0] = elev_grid[0, 0]
+    z_bc[0, -1] = elev_grid[0, -1]
+    z_bc[-1, 0] = elev_grid[-1, 0]
+    z_bc[-1, -1] = elev_grid[-1, 0]
+
+    return z_bc

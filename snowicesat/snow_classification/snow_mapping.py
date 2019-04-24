@@ -11,7 +11,7 @@ import xarray as xr
 from crampon import entity_task
 from crampon import utils
 import snowicesat.cfg as cfg
-from snowicesat.preprocessing.image_corrections import assign_bc
+import snowicesat.utils as utils
 from skimage import filters
 from skimage import exposure
 from skimage.io import imread
@@ -52,11 +52,22 @@ def asmag_snow_mapping(gdir):
 
     # get NIR band as np array
     nir = sentinel.sel(band='B08', time=cfg.PARAMS['date'][0]).img_values.values/10000
-    if nir[nir > 0.2].size > 0:
-        val = filters.threshold_otsu(nir[nir > 0.2])
-        hist, bins_center = exposure.histogram(nir[nir > 0.2])
+    if nir[nir > 0].size > 0:
+        try:
+            val = filters.threshold_otsu(nir[nir > 0])
+        except ValueError:
+            # All pixels cloud-covered and not detected correctly
+            print("All pixels have same color")
+            # Manually set as no snow
+            val = 1
+            bins_center = 0
+            hist = 0
+
+        hist, bins_center = exposure.histogram(nir[nir > 0])
     else:
         val = 1
+        bins_center = 0
+        hist = 0
         # no pixels are snow covered
 
     snow = nir > val
@@ -242,46 +253,58 @@ def naegeli_snow_mapping(gdir):
         # (assumed to be snow line altitude)
 
         # Albedo slope: get DEM and albedo of ambigous range, transform into vector
-        dem_amb = elevation_grid[ambig]
-        albedo_amb = albedo_ind[ambig]
+        if ambig.any():  # only use if ambigious area contains any True values
+            dem_amb = elevation_grid[ambig]
+            albedo_amb = albedo_ind[ambig]
 
-        # Write dem and albedo into pandas DataFrame:
-        df = pd.DataFrame({'dem_amb': dem_amb.tolist(),
-                           'albedo_amb': albedo_amb.tolist()})
-        # Sort values by elevation, drop negative values:
-        df = df.sort_values(by=['dem_amb'])
+            # Write dem and albedo into pandas DataFrame:
+            df = pd.DataFrame({'dem_amb': dem_amb.tolist(),
+                               'albedo_amb': albedo_amb.tolist()})
+            # Sort values by elevation, drop negative values:
+            df = df.sort_values(by=['dem_amb'])
 
-        # Try two ways to obatin critical albedo:
-        # 1. Fitting to step function:
-        albedo_crit_fit, SLA_fit = max_albedo_slope_fit(df)
+            # Try two ways to obatin critical albedo:
+            # 1. Fitting to step function:
+     #       albedo_crit_fit, SLA_fit = max_albedo_slope_fit(df)
 
-        # 2. Iterate over elevation bands with increasing resolution
-        albedo_crit_it, SLA_it = max_albedo_slope_iterate(df)
+            # 2. Iterate over elevation bands with increasing resolution
+            albedo_crit_it, SLA_it = max_albedo_slope_iterate(df)
 
-        # Result: both have very similar results, but fitting
-        # function seems more stable --> will use this value
-        SLA = SLA_it
-        albedo_crit = albedo_crit_it
+            # Result: both have very similar results, but fitting
+            # function seems more stable --> will use this value
+            SLA = SLA_it
+            albedo_crit = albedo_crit_it
 
-        # Derive corrected albedo with outlier suppression:
-        albedo_corr = albedo_ind
-        # TODO: make r_crit dynamical:
-        r_crit = 400
-        for i in range(0,ambig.shape[0]):
-            for j in range(0,ambig.shape[1]):
-                if ambig[i,j]:
-                    albedo_corr[i,j] = albedo_ind[i,j] - \
-                                       (SLA - elevation_grid[i,j]) * 0.005
-                    # Secondary surface type evaluation on ambiguous range:
-                    if albedo_corr[i,j] > albedo_crit:
+            # Derive corrected albedo with outlier suppression:
+            albedo_corr = albedo_ind
+            # TODO: make r_crit dynamical:
+            # get average slope in ambiguous + snowy area:
+            # use masked array:
+            dx = dem_ts.attrs['res'][0]
+            z_bc = utils.assign_bc(elevation_grid)
+            slope_x = (z_bc[1:-1, 2:] - z_bc[1:-1, :-2]) / (2 * dx)
+            slope_y = (z_bc[2:, 1:-1] - z_bc[:-2, 1:-1]) / (2 * dx)
+            # Magnitude of slope
+            slope = np.arctan(np.sqrt(slope_x ** 2 + slope_y ** 2))
+            # Mean slope in snowy + ambiguous area
+            mean_slope = np.mean(slope[albedo_ind > 0.2])
+            print("Mean slope:", mean_slope)
+            r_crit = 400
+            for i in range(0,ambig.shape[0]):
+                for j in range(0,ambig.shape[1]):
+                    if ambig[i,j]:
+                        albedo_corr[i,j] = albedo_ind[i,j] - \
+                                           (SLA - elevation_grid[i,j]) * 0.005
+                        # Secondary surface type evaluation on ambiguous range:
+                        if albedo_corr[i,j] > albedo_crit:
+                            snow[i,j] = True
+                    # Probability test to eliminate extreme outliers:
+                    if elevation_grid[i,j] < (SLA - r_crit):
+                        snow[i,j] = False
+                    if elevation_grid[i,j] > (SLA + r_crit):
                         snow[i,j] = True
-                # Probability test to eliminate extreme outliers:
-                if elevation_grid[i,j] < (SLA_fit - r_crit):
-                    snow[i,j] = False
-                if elevation_grid[i,j] > (SLA_fit + r_crit):
-                    snow[i,j] = True
 
-        print(SLA)
+            print(SLA)
         plt.subplot(2, 3, 5)
         plt.imshow(albedo_k)
         plt.imshow(ambig*1)
@@ -315,9 +338,12 @@ def max_albedo_slope_iterate(df):
     df = df[df.dem_amb > 0]
     dem_min = int(round(df[df.dem_amb > 0].dem_amb.min()))
     dem_max = int(round(df.dem_amb.max()))
+    alb_min = int(round(df[df.albedo_amb > 0].albedo_amb.min()))
+    alb_max = int(round(df.albedo_amb.max()))
+    delta_h = int(round((dem_max - dem_min) / 2))
     for i in range(0, int(np.log(df.dem_amb.size))):
         delta_h = int(round((dem_max - dem_min) / (2 ** (i + 1))))
-        if delta_h > 30: # only look at height bands with h > 20 Meters
+        if delta_h > 25 and i > 0:  # only look at height bands with h > 20 Meters
             dem_avg = range(dem_min, dem_max, delta_h)
             albedo_avg = []
             # Sort array into height bands:
@@ -347,20 +373,38 @@ def max_albedo_slope_iterate(df):
             # previous iteration:
             if i > 1:
                 if max_loc > 0:
-                    max_loc_sub = np.argmax(np.abs(np.gradient
+                    max_loc_sub = np.argmax((np.gradient
                                                (albedo_avg
                                                 [(2*max_loc - 2):(2*max_loc + 2)])))
                     max_loc = 2*max_loc - 2 + max_loc_sub
+                    # new location of maximum albedo slope
                 else:
-                    max_loc = np.argmax(np.abs(np.gradient(albedo_avg)))
+                    max_loc = np.argmax((np.gradient(albedo_avg)))
+                    # first definition of max. albedo slope
             else:
-                max_loc = np.argmax(np.abs(np.gradient(albedo_avg)))
+                max_loc = np.argmax((np.gradient(albedo_avg)))
             if max_loc < (len(albedo_avg)-1):
+                # find location between two values, set as final value for albedo
+                # at SLA and SLA
                 alb_max_slope = (albedo_avg[max_loc]+albedo_avg[max_loc+1])/2
                 height_max_slope = (dem_avg[max_loc]+dem_avg[max_loc+1])/2
+            else:
+                # if SLA is at highest elevation, pick this valiue
+                alb_max_slope = (albedo_avg[max_loc])
+                height_max_slope = (dem_avg[max_loc])
+
 
     plt.subplot(2, 3, 4)
-    plt.plot(dem_avg, albedo_avg)
+    try:
+        plt.plot(dem_avg, albedo_avg)
+    except UnboundLocalError:
+        print("Glacier smaller than 25 meters")
+        dem_avg = range(dem_min, dem_max, delta_h)
+        albedo_avg = range(dem_min, dem_max, delta_h)
+        # Take middle as a first guess:
+        alb_max_slope = (alb_max - alb_min)/2
+        height_max_slope = (dem_max - dem_min)/2
+        plt.plot(dem_avg, albedo_avg)
     plt.axvline(height_max_slope, color='k', ls='--')
     plt.xlabel("Altitude in m")
     plt.ylabel("Albedo")
@@ -408,8 +452,8 @@ def max_albedo_slope_fit(df):
     popt, pcov = curve_fit(model, dem_avg, albedo_avg,
                            bounds=([0.1, dem_min, 0.3], [0.3, dem_max, 0.45]))
 
-    plt.subplot(2,3,3)
-    plt.plot(dem_avg, albedo_avg, dem_avg, model(dem_avg, popt[0], popt[1], popt[2]))
+#    plt.subplot(2,3,3)
+#    plt.plot(dem_avg, albedo_avg, dem_avg, model(dem_avg, popt[0], popt[1], popt[2]))
 
     #get index of elevation of albedo- transition:
     max_loc = (np.abs(dem_avg - popt[1])).argmin()
