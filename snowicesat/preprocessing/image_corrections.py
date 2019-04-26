@@ -230,24 +230,26 @@ def cloud_masking(gdir):
     # Apply cloudmask to scene:
     for band_id in sentinel['band'].values:
         band_array = sentinel.sel(band=[band_id],
-        time = cfg.PARAMS['date'][0]).img_values.values
+                time = cfg.PARAMS['date'][0]).img_values.values
         # Set threshold to exclude glaciers with more than 60% cloud cover
         #  -> no useful classification possible
-        band_array_new = band_array
+        image = sentinel.sel(band=[band_id],
+                time = cfg.PARAMS['date'][0]).img_values.values
         band_array[cloud_masks == 1] = 0
-        cloud_cover = 1 - len(band_array[band_array > 0])/len(band_array_new[band_array_new>0])
-        plt.subplot(121)
-        plt.imshow(band_array_new[0, :, :])
-        plt.subplot(122)
-        plt.imshow(band_array[0, :, :])
-        plt.show()
+        try:
+            cloud_cover = 1 - len(band_array[band_array>0])/len(image[image>0])
+        except ZeroDivisionError:
+            # for 100 % cloud cover:
+            cloud_cover = 1.0
+            band_array.fill(0)
 
-        print("Cloud_cover: ", cloud_cover)
         if cloud_cover > 0.6:
             # -> set all pixels to 0
             band_array.fill(0)
         band_array = band_array[0,:,:]
         sentinel['img_values'].loc[(dict(band=band_id, time=cfg.PARAMS['date'][0]))] = band_array
+    print("Cloud cover: ", cloud_cover)
+
 
     # Write Updated DataSet to file
     sentinel.to_netcdf(gdir.get_filepath('cloud_masked'))
