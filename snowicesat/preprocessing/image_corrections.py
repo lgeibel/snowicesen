@@ -51,7 +51,6 @@ def ekstrand_correction(gdir):
         slope, aspect, hillshade, solar_azimuth, solar_zenith =\
         calc_slope_aspect_hillshade(gdir)
     except TypeError:
-        print("Break out of Ekstrand Correction")
         return
 
     # Open satellite image:
@@ -98,7 +97,6 @@ def ekstrand_correction(gdir):
                     np.cos(solar_zenith) / np.cos(hillshade) /
                     np.cos(slope)) ** k_ekstrand
         except ValueError:
-            print("Something wrong, we need to stop here", gdir)
             # very few data seem to have wrong solar angle data
             # --> simply using uncorrected values for this for now...
             band_arr_correct_ekstrand = band_arr
@@ -151,25 +149,18 @@ def calc_slope_aspect_hillshade(gdir):
         solar_zenith = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_zenith')\
              .angles_in_deg.values
     except FileNotFoundError:
-        print('Break out of hillshade fct.')
         return
 
 
     if solar_zenith.shape != elevation_grid.shape:
-        print("Solar Angles and DEM grid have different size. "
-              "Pixel difference:", solar_zenith.shape[0]-elevation_grid.shape[0], ", ",
-              solar_zenith.shape[1]-elevation_grid.shape[1],
-              "Will be adapted to same grid size")
         if elevation_grid.shape[0] > solar_zenith.shape[0] or \
                 elevation_grid.shape[1] > solar_zenith.shape[1]: # Shorten elevation grid
             elevation_grid = elevation_grid[0:solar_zenith.shape[0], 0:solar_zenith.shape[1]]
         if elevation_grid.shape[0] < solar_zenith.shape[0]: # Extend elevation grid: append row:
-            print('Adding row')
             elevation_grid = np.append(elevation_grid,
                                        [elevation_grid[(elevation_grid.shape[0]-
                                                      solar_zenith.shape[0]), :]], axis = 0)
         if elevation_grid.shape[1] < solar_zenith.shape[1]: # append column
-            print('Adding column')
             b = elevation_grid[:, (elevation_grid.shape[1]-
                                    solar_zenith.shape[1])].reshape(elevation_grid.shape[0], 1)
             elevation_grid = np.hstack((elevation_grid, b))
@@ -209,11 +200,10 @@ def cloud_masking(gdir):
     :return:
     """
 
-    cloud_detector = S2PixelCloudDetector(threshold=0.6, average_over=4, dilation_size=3)
+    cloud_detector = S2PixelCloudDetector(threshold=0.6, average_over=1, dilation_size=2)
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('ekstrand'))
     except FileNotFoundError:
-        print("Break out of cloud masking")
         return
     wms_bands = sentinel.sel(
         band=['B01', 'B02', 'B04', 'B05', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'],
@@ -282,7 +272,6 @@ def remove_sides(gdir):
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('cloud_masked'))
     except FileNotFoundError:
-        print("Break out of remove_side")
         return
     band_array = {}
     for band_id in sentinel['band'].values: # Read all bands as np arrays

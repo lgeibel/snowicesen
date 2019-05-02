@@ -121,7 +121,6 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
     ----------
         None
     """
-    print("In crop_tif_to_glacier")
     glacier = gpd.read_file(gdir.get_filepath('outlines'))
 
     # iterate over all bands
@@ -154,7 +153,6 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                 out_image, out_transform = rasterio.mask.mask(src, features,
                                                               crop=True)
             except ValueError:
-                print("We handle our value error. Exit function for this date")
                 return
             out_meta = src.meta.copy()
             out_meta.update({"driver": "GTiff",
@@ -211,12 +209,10 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
 
     all_bands = all_bands.assign_coords(time=time_stamp)
     all_bands = all_bands.expand_dims('time')
-   # all_bands = all_bands.squeeze('band').drop('band')
     all_bands_attrs = all_bands.attrs
 
     # check if netcdf file for this glacier already exists, create if not, append if exists
     if not os.path.isfile(gdir.get_filepath(file_group)):
-        print("netcdf does not exist yet, creating new")
         all_bands = all_bands.to_dataset(name=var_name)
         all_bands.attrs = all_bands_attrs
         all_bands.attrs['pyproj_srs'] = rasterio.crs.CRS.to_proj4(src1.crs)
@@ -225,14 +221,11 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                             unlimited_dims={'time': True})
         all_bands.close()
     else:
-        print('Open existing file')
+        #  Open existing file
         existing = xr.open_dataset(gdir.get_filepath(file_group))
         # Convert all_bands from DataArray to Dataset
         all_bands = all_bands.to_dataset(name=var_name)
-        if all_bands.time.values in existing.time.values:
-            print("date already exists, not writing again")
-        else:
-            print("New date, appending to netcdf...")
+        if not all_bands.time.values in existing.time.values:
             appended = xr.concat([existing, all_bands], dim='time')
             existing.close()
             appended.attrs = all_bands_attrs

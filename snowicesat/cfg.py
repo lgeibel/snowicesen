@@ -105,8 +105,12 @@ CBASENAMES['snow_cover'] =('snow_cover.nc', _doc)
 _doc = 'A temporary geoTIFF file containing cache files while preparing sentinel data' \
        ' for a glacier'
 CBASENAMES['cropped_cache'] =('cropped_cache.tif', _doc)
-_doc = 'Figure containing all mapped snow cover'
-CBASENAMES['plt_snowcover'] = ('plot_snow.png', _doc)
+_doc = 'Figure containing mapped snow cover with Otsu_Thresholding'
+CBASENAMES['plt_otsu'] = ('plot_otsu.png', _doc)
+_doc = 'Figure containing mapped snow cover with improved Nageli Method'
+CBASENAMES['plt_impr_naegeli'] = ('plot_impr_naegeli.png', _doc)
+_doc = 'Figure containing mapped snow cover with Naegeli Method'
+CBASENAMES['plt_naegeli'] = ('plot_naegeli.png', _doc)
 
 
 CPARAMS['date'] = ['date']

@@ -184,7 +184,6 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
     if not len(products) is 0: # If products are available, download them:
             # Create cache directory for this date:
         if not os.path.exists(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]))):
-             print('creating new folder for this date')
              os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0])))
              os.makedirs(os.path.join(cfg.PATHS['working_dir'], 'cache', str(cfg.PARAMS['date'][0]), 'mosaic'))
 
@@ -193,12 +192,9 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
         print('Downloaded Tiles: ',tiles_downloaded)
         for index in product_id:
             safe_name = products[index]['filename']
-            print(safe_name)
             if not os.path.isdir(os.path.join(cfg.PATHS['working_dir'],'cache',
                                               str(cfg.PARAMS['date'][0]), safe_name)):
                 #  If not downloaded: downloading all products
-                print("exists:",os.path.join(cfg.PATHS['working_dir'], 'cache',
-                                             str(cfg.PARAMS['date'][0]),safe_name))
                 download_zip = api.download(index,
                                             directory_path=os.path.join(
                                                 cfg.PATHS['working_dir'],
@@ -267,7 +263,6 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                 #----- Reproject to 10 Meter resolution:
                 bands_60m = ['B01.tif', 'B09.tif', 'B10.tif']
                 bands_20m = ['B05.tif', 'B06.tif', 'B07.tif', 'B11.tif', 'B12.tif', 'B8A.tif']
-                print("Current band is ",band)
                 if band+".tif" in bands_60m or band+".tif" in bands_20m:
                     if band+".tif" in bands_60m:
                         res_factor = 6
@@ -277,8 +272,6 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                     newarr = np.empty(shape=(arr.shape[0],  # same number of bands
                                              (arr.shape[1] * res_factor),
                                              (arr.shape[2] * res_factor)), dtype='uint16')
-                    print(band, arr.shape)
-                    print(band, newarr.shape)
 
                     # adjust the new affine transform to the smaller cell size
                     old_transform = out_trans
@@ -413,7 +406,6 @@ def extract_metadata(XML_File):
     acoord: solar azimuth angle in array of 10x10m resolution
     """
     # Parse the XML file
-    print("Extracting Metadata now")
     tree = ET.parse(XML_File)
     root = tree.getroot()
 

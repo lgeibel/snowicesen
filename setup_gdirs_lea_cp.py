@@ -34,26 +34,26 @@ if __name__ == '__main__':
     rgidf = gpd.read_file(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\outlines\rgi_copy.shp")
     # Ignore all values glaciers smaller than 0.1 km^2
     rgidf = rgidf.loc[rgidf['Area'] > 0.1]
-    rgidf = rgidf.sample(n=30)
+#   rgidf = rgidf.sample(n=30)
 
     # Only keep those glaciers to have smaller dataset
 #    rgidf = rgidf[rgidf.RGIId.isin([
 #        'RGI50-11.B4411'])]
- #       'RGI50-11.B4504'  # Gries
- #       'RGI50-11.A54L36n', # Fiescher (Shaded)
- #       'RGI50-11.B4312n-1',  # Rhone
- ##       'RGI50-11.B5616n-1',  # Findelen
- #       'RGI50-11.A55F03',  # Plaine Morte
- #       'RGI50-11.C1410',  # Basodino
- #       'RGI50-11.A10G05',  # Silvretta
- #       'RGI50-11.B3626-1'  # Gr. Aletsch
+#        'RGI50-11.B4504',  # Gries
+#        'RGI50-11.A54L36n', # Fiescher (Shaded)
+#        'RGI50-11.B4312n-1',  # Rhone
+#        'RGI50-11.B5616n-1',  # Findelen
+#        'RGI50-11.A55F03',  # Plaine Morte
+#        'RGI50-11.C1410',  # Basodino
+#        'RGI50-11.A10G05',  # Silvretta
+#        'RGI50-11.B3626-1'  # Gr. Aletsch
  #       ])]
 
 
     log.info('Number of glaciers: {}'.format(len(rgidf)))
 
     #Go - initialize working directories
-    gdirs = init_glacier_regions_snowicesat(rgidf, reset= False, force=True)
+    gdirs = init_glacier_regions_snowicesat(rgidf, reset= True, force=True)
     print("Done with init_glacier_regions")
 
 
@@ -72,13 +72,14 @@ if __name__ == '__main__':
         end_date_var = start_date_var+timedelta(days=1)
         if tiles_downloaded > 0:
             # Processing tasks: only execute when new files were downloaded!
-            task_list = [#tasks.crop_sentinel_to_glacier, # output: sentinel.nc
-                         #tasks.crop_metadata_to_glacier, # output: solar_angles.nc
-                         #tasks.crop_dem_to_glacier,  # output: dem_ts.nc
-                         #tasks.ekstrand_correction, # output: ekstrand.nc
-                         #tasks.cloud_masking, # ouput: cloud_masked.nc
-                         #tasks.remove_sides, # output: sentinel_temp.nc
-                         #tasks.asmag_snow_mapping,
+            task_list = [tasks.crop_sentinel_to_glacier, # output: sentinel.nc
+                         tasks.crop_metadata_to_glacier, # output: solar_angles.nc
+                         tasks.crop_dem_to_glacier,  # output: dem_ts.nc
+                         tasks.ekstrand_correction, # output: ekstrand.nc
+                         tasks.cloud_masking, # ouput: cloud_masked.nc
+                         tasks.remove_sides, # output: sentinel_temp.nc
+                         tasks.asmag_snow_mapping,
+                         tasks.naegeli_snow_mapping,
                          tasks.naegeli_improved_snow_mapping
                         ]
             for task in task_list:
