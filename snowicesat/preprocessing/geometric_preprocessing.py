@@ -1,17 +1,12 @@
 import snowicesat.cfg as cfg
-import snowicesat.utils as utils
 from oggm.utils import *
 from rasterio.mask import mask as riomask
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio.crs import CRS
-from rasterio.plot import show
-import glob
-import time
 import rasterio
 import fiona
 import xarray
 import geopandas as gpd
-import matplotlib.pyplot as plt
 
 log = logging.getLogger(__name__)
 

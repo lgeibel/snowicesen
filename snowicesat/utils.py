@@ -5,40 +5,20 @@ A collection of some useful miscellaneous functions.
 from __future__ import absolute_import, division
 
 from rasterio.merge import merge
-import xml.etree.ElementTree as ET
-from rasterio.warp import calculate_default_transform, reproject, Resampling
-from rasterio.warp import calculate_default_transform, reproject, Resampling
+from rasterio.warp import reproject, Resampling
 from rasterio import Affine
-import matplotlib.pyplot as plt
-from rasterio.plot import show
-import numpy as np
-from rasterio.plot import show
-import geopandas as gpd
 import shapely
-import datetime as dt
 from configobj import ConfigObj, ConfigObjError
-from sentinelsat import SentinelAPI, read_geojson, geojson_to_wkt
-from scipy.ndimage.interpolation import map_coordinates
+from sentinelsat import SentinelAPI
 import fiona
-import xarray
 from oggm.utils import *
 # Locals
 import snowicesat.cfg as cfg
-from pathlib import Path
-from osgeo import ogr
-from datetime import datetime, timedelta
 from datetime import date
-from math import sqrt, cos, sin, tan, pi, asin, acos, atan, atan2, isnan
-import math
 import sys
-import re
 import os
-import struct
 import xml.etree.ElementTree as ET
 import numpy as np
-from osgeo import gdal
-
-from pathlib import Path
 
 log = logging.getLogger(__name__)
 

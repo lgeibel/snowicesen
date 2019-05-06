@@ -1,11 +1,9 @@
 from __future__ import absolute_import, division
-import salem
 import os
 import logging
 import snowicesat.cfg as cfg
 from crampon import utils
 from snowicesat.preprocessing import create_gdirs
-#from crampon.core.preprocessing import gis
 import crampon
 from shutil import rmtree
 from oggm.workflow import _init_pool_globals, init_mp_pool, _merge_dicts,\

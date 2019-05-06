@@ -1,24 +1,15 @@
 from __future__ import absolute_import, division
 
-from distutils.version import LooseVersion
-from salem import Grid, wgs84
 import os
 import numpy as np
-import numpy.ma as ma
-import pyproj
 import logging
 import xarray as xr
 from crampon import entity_task
-from crampon import utils
 import snowicesat.cfg as cfg
-import snowicesat.utils as utils
 from skimage import filters
 from skimage import exposure
-from skimage.io import imread
-from scipy import stats
-from scipy.optimize import leastsq, curve_fit
+from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
-import math
 import pandas as pd
 
 try:
@@ -507,7 +498,7 @@ def naegeli_improved_snow_mapping(gdir):
                 r_crit_max = elevation_grid[elevation_grid > 0].max() - SLA
             r_crit = - r_square * r_crit_max + r_crit_max
             r_crit = min(r_crit_max, r_crit)
-            
+
             for i in range(0, ambig.shape[0]):
                 for j in range(0, ambig.shape[1]):
                     if ambig[i, j]:

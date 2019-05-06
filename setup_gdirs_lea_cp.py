@@ -1,7 +1,6 @@
 import warnings
 warnings.filterwarnings('ignore')
 from snowicesat import cfg
-from crampon import utils
 from snowicesat import tasks
 import geopandas as gpd
 import logging
@@ -10,9 +9,6 @@ from snowicesat.utils import download_all_tiles
 from crampon.workflow import execute_entity_task
 from datetime import timedelta
 from snowicesat.utils import datetime_to_int, int_to_datetime, extract_metadata
-import glob
-import os
-import random
 
 
 logging.basicConfig(format='%(asctime)s: %(name)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=logging.DEBUG)
@@ -34,7 +30,7 @@ if __name__ == '__main__':
     rgidf = gpd.read_file(r"C:\Users\Lea Geibel\Documents\ETH\MASTERTHESIS\snowicesat\data\outlines\rgi_copy.shp")
     # Ignore all values glaciers smaller than 0.1 km^2
     rgidf = rgidf.loc[rgidf['Area'] > 0.1]
-    rgidf = rgidf.sample(n=20)
+    rgidf = rgidf.sample(n=5)
 
     # Only keep those glaciers to have smaller dataset
 #    rgidf = rgidf[rgidf.RGIId.isin([
@@ -53,7 +49,7 @@ if __name__ == '__main__':
     log.info('Number of glaciers: {}'.format(len(rgidf)))
 
     #Go - initialize working directories
-    gdirs = init_glacier_regions_snowicesat(rgidf, reset= False, force=True)
+    gdirs = init_glacier_regions_snowicesat(rgidf, reset= True, force=True)
     print("Done with init_glacier_regions")
 
 
@@ -72,12 +68,12 @@ if __name__ == '__main__':
         end_date_var = start_date_var+timedelta(days=1)
         if tiles_downloaded > 0:
             # Processing tasks: only execute when new files were downloaded!
-            task_list = [#tasks.crop_sentinel_to_glacier, # output: sentinel.nc
-                         #tasks.crop_metadata_to_glacier, # output: solar_angles.nc
-                         #tasks.crop_dem_to_glacier,  # output: dem_ts.nc
-                         #tasks.ekstrand_correction, # output: ekstrand.nc
-                         #tasks.cloud_masking, # ouput: cloud_masked.nc
-                         #tasks.remove_sides, # output: sentinel_temp.nc
+            task_list = [tasks.crop_sentinel_to_glacier, # output: sentinel.nc
+                         tasks.crop_metadata_to_glacier, # output: solar_angles.nc
+                         tasks.crop_dem_to_glacier,  # output: dem_ts.nc
+                         tasks.ekstrand_correction, # output: ekstrand.nc
+                         tasks.cloud_masking, # ouput: cloud_masked.nc
+                         tasks.remove_sides, # output: sentinel_temp.nc
                          tasks.asmag_snow_mapping,
                          tasks.naegeli_snow_mapping,
                          tasks.naegeli_improved_snow_mapping

@@ -1,0 +1,14 @@
+name: snowicesat_env
+channels:
+  - conda-forge
+  - oggm
+dependencies:
+  - python=3.6
+  - oggm
+  - crampon
+  - scipy
+  - s2cloudless
+  - skimage
+
+
+

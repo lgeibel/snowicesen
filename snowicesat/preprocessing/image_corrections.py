@@ -1,36 +1,20 @@
 from __future__ import absolute_import, division
 
-from distutils.version import LooseVersion
-from salem import Grid, wgs84
-import os
 import numpy as np
-import numpy.ma as ma
-import pyproj
 import logging
 import xarray as xr
 from crampon import entity_task
 from crampon import utils
 import snowicesat.cfg as cfg
 import snowicesat.utils as utils
-from functools import partial
-import geopandas as gpd
-import shapely
-import salem
 from scipy import stats
-import shutil
-from s2cloudless import S2PixelCloudDetector, CloudMaskRequest
-from oggm.core.gis import gaussian_blur, multi_to_poly,\
-    _interp_polygon, _polygon_to_pix, define_glacier_region, glacier_masks
-from oggm.utils import get_topo_file
+from s2cloudless import S2PixelCloudDetector
 import matplotlib.pyplot as plt
-import math
 try:
     # rasterio V > 1.0
     from rasterio.merge import merge as merge_tool
 except ImportError:
     from rasterio.tools.merge import merge as merge_tool
-import rasterio
-from rasterio.plot import show
 
 
 # Module logger
