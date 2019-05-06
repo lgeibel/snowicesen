@@ -19,3 +19,10 @@ show(tile)
 
 
 ncdump -h dem_ts.nc
+
+i = 1
+for band_id in sentinel['band'].values:
+    plt.subplot(3, 3, i)
+    time_id = cfg.PARAMS['date'][0]
+    plt.imshow(sentinel.sel(band=band_id, time=time_id).img_values.values)
+	i = i+1

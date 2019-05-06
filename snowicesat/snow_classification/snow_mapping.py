@@ -26,19 +26,25 @@ log = logging.getLogger(__name__)
 
 @entity_task(log)
 def asmag_snow_mapping(gdir):
-    """
-    Performs Otsu_tresholding on sentinel-image
-    of glacier and SLA retrieval as described by
-     P. Rastner:
-     "Automated mapping of snow cover on glaciers and
-     calculation of snow line altitudes from multi-
-     temporal Landsat data
+    """ Snow Mapping after ASMAG-Algorithm
 
-     Stores snow cover map in asmag dimension of
-     snow_cover.nc in variables snow_map and SLA
-       :param gdirs: :py:class:`crampon.GlacierDirectory`
-        A GlacierDirectory instance.
-    :return: None
+    Performs Otsu-Thresholding on Sentinel-image
+    of glacier and SLA retrieval as described by
+    P. Rastner:
+    "Automated mapping of snow cover on glaciers and
+    calculation of snow line altitudes from multi-
+    temporal Landsat data" (in Review)
+
+    Stores snow cover map in Asmag dimension of
+    snow_cover.nc in variables snow_map and SLA
+
+    Parameters:
+    ---------
+    gdirs: :py:class:`crampon.GlacierDirectory`
+       A GlacierDirectory instance.
+    Returns:
+    ---------
+    None
     """
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
@@ -129,12 +135,27 @@ def asmag_snow_mapping(gdir):
     snow_new.close()
 
 def get_SLA_asmag(gdir, snow):
-    """Snow line altitude retrieval as described in the ASMAG algorithm.
-    Returns None if there is no 20m elevation band with over 50% snow cover
-    :param: gdir: :py:class:`crampon.GlacierDirectory`
+    """Snow line altitude retrieval as described in the
+    ASMAG algorithm.
+
+    Checks if 5 continuous 20m elevation bands have a snow
+    cover higher than 50%.
+    If so, the lowest elevation value is used as SLA. If no 5 continuous
+    elevation bands satisfy this criteria, the search continues for 4,
+    then 3, etc.
+
+    If there is no 20m elevation band with over 50% snow cover, the
+    functions returns "None"
+
+    Parameters:
+    ----------
+    gdir: :py:class:`crampon.GlacierDirectory`
                     A GlacierDirectory instance.
-            snow: binary snow cover map as np-Array
-    :return: SLA in meters
+            snow: binary snow cover map of area in
+            GlacierDirectory as np-Array
+
+    Returns:
+         SLA in meters (None if no snow covered bands)
     """
     # Get DEM:
     dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
@@ -162,7 +183,8 @@ def get_SLA_asmag(gdir, snow):
             # find all pixels with same elevation between "height" and "height-20":
             band_height = 20
             while band_height > 0:
-                snow_band = snow[(elevation_grid > (height - band_height)) & (elevation_grid < height)]
+                snow_band = snow[(elevation_grid > (height - band_height))
+                                 & (elevation_grid < height)]
                 if snow_band.size == 0:
                     band_height -= 1
                 else:
@@ -196,15 +218,28 @@ def get_SLA_asmag(gdir, snow):
 
 @entity_task(log)
 def naegeli_snow_mapping(gdir):
-    """
-    Performs snow cover mapping on sentinel-image
-    of glacier as described in Naegeli, 2019- Change detection
-     of bare-ice albedo in the Swiss Alps
-    Creates snow cover map in naegeli_snow_cover variable in
-    snow_cover.nc
-       :param gdir: :py:class:`crampon.GlacierDirectory`
+    """ Snow Cover Mapping
+
+    Performs snow cover mapping on Sentinel2-Image
+    of glacier as described in
+    Naegeli, 2019
+    "Change detection
+    of bare-ice albedo in the Swiss Alps"
+    https://www.the-cryosphere.net/13/397/2019/tc-13-397-2019.html
+
+    SLA is calculated with get_SLA_asmag() function.
+
+    Saves snow cover and SLA in naegeli_orig dimension in
+    snow_cover.nc netCDF file
+
+    Parameters:
+    ---------
+    gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    :return:
+
+    Returns:
+    ---------
+    None
     """
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
@@ -348,6 +383,12 @@ def naegeli_snow_mapping(gdir):
 
     # Save snow cover map to .nc file:
     snow_xr = xr.open_dataset(gdir.get_filepath('snow_cover'))
+    # calculate SLA from snow cover map:
+    SLA_new = get_SLA_asmag(gdir, snow)
+    if SLA_new is None:
+        SLA_new = SLA
+    SLA = SLA_new
+
     # write variables into dataset:
     snow_xr['snow_map'].loc[dict(model='naegeli_orig', time=cfg.PARAMS['date'][0])] = snow
     snow_xr['SLA'].loc[dict(model='naegeli_orig', time=cfg.PARAMS['date'][0])] = SLA
@@ -369,16 +410,37 @@ def naegeli_snow_mapping(gdir):
 
 @entity_task(log)
 def naegeli_improved_snow_mapping(gdir):
-    """
-    Performs snow cover mapping on sentinel-image
-    of glacier as described in Naegeli, 2019- Change detection
-     of bare-ice albedo in the Swiss Alps with an improved SLA mapping
-     algorithm and variable r_crit
-    Creates snow cover map in naegeli_snow_cover variable in
-    snow_cover.nc
-       :param gdir: :py:class:`crampon.GlacierDirectory`
+    """ Snow Cover Mapping
+
+    Performs snow cover mapping on Sentinel2-Image
+    of glacier as described in
+    Naegeli, 2019
+    "Change detection
+    of bare-ice albedo in the Swiss Alps"
+    https://www.the-cryosphere.net/13/397/2019/tc-13-397-2019.html
+
+    with some improvements:
+    - detection of the critical SLA is performed with an iterative
+    method to find step between snow-ice albedo change (data often
+    too noisy to take steepest descend as the location for the transition)
+    - r_crit for outlier suppresion is implemented dynamically, based on
+    r_squared value (goodness of fit) of a step function onto the
+    albedo- elevation profile (good fit = smaller r_crit, poor fit =
+    large r_crit)
+
+    SLA is calculated with get_SLA_asmag() function.
+
+    Saves snow cover and SLA in naegeli_impr dimension in
+    snow_cover.nc netCDF file
+
+    Parameters:
+    ---------
+    gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    :return:
+
+    Returns:
+    ---------
+    None
     """
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
@@ -541,6 +603,11 @@ def naegeli_improved_snow_mapping(gdir):
 
     # Save snow cover map to .nc file:
     snow_xr = xr.open_dataset(gdir.get_filepath('snow_cover'))
+    # calculate SLA from snow cover map:
+    SLA_new = get_SLA_asmag(gdir, snow)
+    if SLA_new is None:
+        SLA_new = SLA
+    SLA = SLA_new
     # write variables into dataset:
     snow_xr['snow_map'].loc[dict(model='naegeli_improv', time=cfg.PARAMS['date'][0])] = snow
     snow_xr['SLA'].loc[dict(model='naegeli_improv', time=cfg.PARAMS['date'][0])] = SLA
@@ -562,15 +629,29 @@ def naegeli_improved_snow_mapping(gdir):
 
 
 def max_albedo_slope_iterate(df):
-    """Finds elevation and value of highest
-    albedo/elevation slope while iterating over elevation bins of
-    decreasing height extend
+    """ Finds elevation of SLA_crit and corresponding albedo
+
+    To detect to location of the ice-snow transition, an iterative method
+    that searchs for the maximum slope in the Albedo-elevation profile
+    only in the proximity of the previous value. For every iteration, the number of
+    elveation bins is increased by factor 2/ the height extend of each band
+    is decreased by factor 2 until a minimum of 20 Meters height extend.
+
+    Then a step function is fitted onto the elevation-ALbedo profile,
+    assuming a step between snow and ice albedo at the transition.
+    The goodness-fit (r_squared) value of the model to the data is
+    then saved to later implement in the retrieval of a dynamic r_crit value
+
+    Params:
     ---------
-    Input: df: Dataframe  containing the variable dem_amb (elevations of ambiguous range)
-    and albedo_amb (albedo values in ambiguous range)
-    Return: alb_max_slope, max_loc: Albedo at maximum albedo slope and location
-    of maximum albedo slope
-            r_square: r_square value to determine the fit of a step function onto the
+    df: Dataframe  containing the variable dem_amb (elevations of ambiguous range)
+    and albedo_amb (albedo values in ambiguous range) of ambiguous area
+
+    Returns:
+    ---------
+    alb_max_slope, max_loc: float: Albedo at maximum albedo slope and location
+            of maximum albedo slope
+    r_square: float: r_square value to determine the fit of a step function onto the
             elevation-albedo profile
     """
 
@@ -585,7 +666,7 @@ def max_albedo_slope_iterate(df):
     delta_h = int(round((dem_max - dem_min) / 2))
     for i in range(0, int(np.log(df.dem_amb.size))):
         delta_h = int(round((dem_max - dem_min) / (2 ** (i + 1))))
-        if delta_h > 25 and i > 0:  # only look at height bands with h > 20 Meters
+        if delta_h > 20 and i > 0:  # only look at height bands with h > 20 Meters
             dem_avg = range(dem_min, dem_max, delta_h)
             albedo_avg = []
             # Sort array into height bands:
@@ -658,12 +739,14 @@ def max_albedo_slope_iterate(df):
     # curve fitting: bounds for inital model:
     # bounds:
     # a: step size of heaviside function: 0.1-0.3
-    # b: elevation of snow - ice transition: dem_min - dem_max
+    # b: elevation of snow - ice transition: dem_min + (SLA - dem_min)/2
+    #                                    to  dem_max - (dem_max -SLA)/2
     # c: average albedo of bare ice: 0.25-0.55
 
     try:
         popt, pcov = curve_fit(model, dem_avg, albedo_avg,
-                           bounds=([0.1, dem_min, 0.3], [0.3, dem_max, 0.45]))
+                           bounds=([0.1, dem_min + (height_max_slope - dem_min)/2, 0.3],
+                                   [0.3, dem_max - (dem_max -height_max_slope)/2, 0.45]))
         residuals = abs(albedo_avg - model(dem_avg, popt[0], popt[1], popt[2]))
         ss_res = np.sum(residuals ** 2)
         ss_tot = np.sum((albedo_avg - np.mean(albedo_avg)) ** 2)
@@ -678,15 +761,19 @@ def max_albedo_slope_iterate(df):
 
 def max_albedo_slope_orig(df):
     """Finds elevation and value of highest
-    albedo/elevation slope while iterating over elevation bins of
-    decreasing height extend
+    albedo/elevation slope as the maximum gradient
+    of the elevation albedo profile with 20 Meter bins
+
+    Parameters:
     ---------
-    Input: df: Dataframe  containing the variable dem_amb (elevations of ambiguous range)
+    df: Dataframe  containing the variable dem_amb (elevations of ambiguous range)
     and albedo_amb (albedo values in ambiguous range)
-    Return: alb_max_slope, max_loc: Albedo at maximum albedo slope and location
-    of maximum albedo slope
-            r_square: r_square value to determine the fit of a step function onto the
-            elevation-albedo profile
+
+
+    Returns:
+    alb_max_slope, height_max_slope: Int:
+            Albedo at maximum albedo slope and location
+                of maximum albedo slope
     """
 
     # Smart minimum finding:
@@ -764,71 +851,18 @@ def max_albedo_slope_orig(df):
     return alb_max_slope, height_max_slope
 
 
-def max_albedo_slope_fit(df):
-    """
-    Finds albedo slope with fitting to step function
-    :param df:  Dataframe  containing the variable dem_amb (elevations of ambiguous range)
-    and albedo_amb (albedo values in ambiguous range)
-    Returns: alb_max_slope, max_loc: Albedo at maximum albedo slope and location
-    of maximum albedo slope
-    """
-    df = df[df.dem_amb > 0]
-    dem_min = int(round(df[df.dem_amb > 0].dem_amb.min()))
-    dem_max = int(round(df.dem_amb.max()))
-
-    delta_h = int(round((dem_max - dem_min) / 30))
-    delta_h = 1
-    dem_avg = range(dem_min, dem_max, delta_h)
-    albedo_avg = []  # Sort array into height bands:
-    for num, height_20 in enumerate(dem_avg):
-        # Write index of df.dem that is between the
-        # current and the next elevation band into list:
-        albedo_in_band = df.albedo_amb[(df.dem_amb > height_20) &
-                                       (df.dem_amb < height_20 + 20)].tolist()
-        # Average over all albedo values in one band:
-        if not albedo_in_band:  # if list is empty append 0
-            albedo_avg.append(0.25)
-        else:  # if not append average albedo of elevation band
-            albedo_avg.append(sum(albedo_in_band) / len(albedo_in_band))
-    for num, local_alb in enumerate(albedo_avg):
-        if albedo_avg[num] is 0:  # Interpolate if value == 0 as
-            #  central difference (Boundaries cant be zero)
-            albedo_avg[num] = (albedo_avg[num - 1] + albedo_avg[num + 1]) / 2
-
-    # curve fitting: bounds for inital model:
-    # bounds:
-    # a: step size of heaviside function: 0.1-0.3
-    # b: elevation of snow - ice transition: dem_min - dem_max
-    # c: average albedo of bare ice: 0.25-0.55
-
-    popt, pcov = curve_fit(model, dem_avg, albedo_avg,
-                           bounds=([0.1, dem_min, 0.3], [0.3, dem_max, 0.45]))
-
-    residuals = abs(albedo_avg - model(dem_avg, popt[0], popt[1], popt[2]))
-    ss_res = np.sum(residuals ** 2)
-    ss_tot = np.sum((albedo_avg - np.mean(albedo_avg)) ** 2)
-    r_squared = 1 - (ss_res / ss_tot)
-
-    #    plt.subplot(2,3,3)
-    #    plt.plot(dem_avg, albedo_avg, dem_avg, model(dem_avg, popt[0], popt[1], popt[2]))
-
-    # get index of elevation of albedo- transition:
-    max_loc = (np.abs(dem_avg - popt[1])).argmin()
-    if max_loc < (len(albedo_avg) - 1):
-        alb_max_slope = (albedo_avg[max_loc] + albedo_avg[max_loc + 1]) / 2
-        height_max_slope = (dem_avg[max_loc] + dem_avg[max_loc + 1]) / 2
-    else:
-        alb_max_slope = albedo_avg[max_loc]
-        height_max_slope = dem_avg[max_loc]
-    return alb_max_slope, height_max_slope
-
-
 def model(alti, a, b, c):
     """ Create model for step-function
-    Input: alti: Altitude distribution of glacier
-            a: step size of heaviside function
-            b: elevation of snow-ice transition
-            c: average albedo of bare ice
-    Return: step-function model
+
+    Parameters:
+    ----------
+    alti: Altitude distribution of glacier
+    a: step size of heaviside function
+    b: elevation of snow-ice transition
+    c: average albedo of bare ice
+
+    Returns:
+    ---------
+    model of step-function as np.array with given input parameters
     """
     return (0.5 * (np.sign(alti - b) + 1)) * a + c  # Heaviside fitting function
