@@ -116,6 +116,7 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
     # 2. Geodataframe containing all glaciers:
     # Reproject to  WGS 84 Grid for query (requested by sentinelsat module):
     glacier = glacier.to_crs({'init': 'epsg:4326'})
+
     # Create bounding box/envelope as polygon, safe to geojson file
     bbox = glacier.envelope
 
@@ -127,18 +128,18 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
 
     pointList = [p1, p2, p3, p4, p1]
     index = shapely.geometry.Polygon([[p.x, p.y] for p in pointList])
-    # Define a polygon feature geometry with one attribute
-    schema = {
-        'geometry': 'Polygon',
-        'properties': {'id': 'int'},
-    }
-
-    # Write a new Shapefile
-    with fiona.open('my_shp2.shp', 'w', 'ESRI Shapefile', schema) as c:
-        c.write({
-            'geometry': shapely.geometry.mapping(index),
-            'properties': {'id': 123},
-        })
+    # # Define a polygon feature geometry with one attribute
+    # schema = {
+    #     'geometry': 'Polygon',
+    #     'properties': {'id': 'int'},
+    # }
+    #
+    # # Write a new Shapefile
+    # with fiona.open('my_shp2.shp', 'w', 'ESRI Shapefile', schema) as c:
+    #     c.write({
+    #         'geometry': shapely.geometry.mapping(index),
+    #         'properties': {'id': 123},
+    #     })
 
     #for index in bbox:
     # Iterate over each item in the glacier list,
