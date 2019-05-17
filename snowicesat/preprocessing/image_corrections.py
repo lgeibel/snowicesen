@@ -23,17 +23,22 @@ log = logging.getLogger(__name__)
 
 @entity_task(log)
 def ekstrand_correction(gdir):
-    """
-    Performs Ekstrand Terrain correction of
+    """ Performs Ekstrand Terrain correction of
     scene in Glacier Directory
-       :param gdirs: :py:class:`crampon.GlacierDirectory`
+
+    Parameters:
+    -----------
+    gdirs: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    :return:
+
+    Returns:
+    -----------
+    None
     """
     # Get slope, aspect and hillshade of Glacier Scene:
     try:
         slope, aspect, hillshade, solar_azimuth, solar_zenith =\
-        calc_slope_aspect_hillshade(gdir)
+            calc_slope_aspect_hillshade(gdir)
     except TypeError:
         return
 
@@ -41,7 +46,7 @@ def ekstrand_correction(gdir):
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
     except FileNotFoundError:
-        # if no sentinel file exists:
+        # Glacier not located in tile
         return
     b_sub = []
     # Loop over all bands:
@@ -69,7 +74,6 @@ def ekstrand_correction(gdir):
             k_ekstrand, intercept, r_value, p_value, std_err = \
                 stats.linregress(x_vec_rel, y_vec_rel)
 
-            # TODO: somehow correction is only on 1st band!!!
             # Different equations available - which one is correct?
             # Bippus (also used by Rastner:)
             band_arr_correct_bippus = band_arr * (np.cos(solar_zenith) /
@@ -107,18 +111,25 @@ def ekstrand_correction(gdir):
         # plt.show()
     sentinel.to_netcdf(gdir.get_filepath('ekstrand'))
     sentinel.close()
- #   shutil.move(gdir.get_filepath('ekstrand'), gdir.get_filepath('sentinel'))
 
 def calc_slope_aspect_hillshade(gdir):
-    """
-    Reads dem_ts group('alti') to xarray, then
-    converts to data_array, calculate slope, aspect and
-    hillshade
+    """ Calculates Slope, Aspect and Hillshade
 
-    :param gdirs: :py:class:`crampon.GlacierDirectory`
+    Reads dem_ts group('alti') into xarray, then
+    converts to a data_array.
+    There, slope, aspect and
+    hillshade of the scene in the gdir is derived
+
+    Parameters:
+    ----------
+    gdirs: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    :return: slope, aspect, hillshade, azimuth_rad, zenith_rad:
-                3-D numpy arrays, angles in radians
+
+    Returns:
+    ----------
+    slope, aspect, hillshade, azimuth_rad, zenith_rad:
+                3-D numpy arrays containing slope, aspect, hillshade
+                 and solar azimiuth and solar zenith angles in radians
     """
 
     dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
@@ -133,10 +144,11 @@ def calc_slope_aspect_hillshade(gdir):
         solar_zenith = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_zenith')\
              .angles_in_deg.values
     except FileNotFoundError:
+        # Glacier not located in tile
         return
 
-
     if solar_zenith.shape != elevation_grid.shape:
+        print(solar_zenith.shape, elevation_grid.shape)
         if elevation_grid.shape[0] > solar_zenith.shape[0] or \
                 elevation_grid.shape[1] > solar_zenith.shape[1]: # Shorten elevation grid
             elevation_grid = elevation_grid[0:solar_zenith.shape[0], 0:solar_zenith.shape[1]]
@@ -149,6 +161,7 @@ def calc_slope_aspect_hillshade(gdir):
                                    solar_zenith.shape[1])].reshape(elevation_grid.shape[0], 1)
             elevation_grid = np.hstack((elevation_grid, b))
                 # Expand grid on boundaries to obtain raster in same shape after
+        print(solar_zenith.shape, elevation_grid.shape)
 
     # differentiating
     z_bc = utils.assign_bc(elevation_grid)
@@ -179,9 +192,20 @@ def cloud_masking(gdir):
     """
     Masks cloudy pixels with s2cloudless algorithm
 
-    :param gdir: :py:class:`crampon.GlacierDirectory`
+    - Reads necessary bands from ekstrand corrected netCDF file
+    - Applies s2cloudless algorithm to scene to get cloud mask
+    (https://github.com/sentinel-hub/sentinel2-cloud-detector)
+    - Applies cloud mask to scene
+    - saves processed scene with all bands in cloud_masked.nc file
+
+    Parameters:
+    ----------
+    gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    :return:
+
+    Returns:
+    ----------
+    None
     """
 
     cloud_detector = S2PixelCloudDetector(threshold=0.6, average_over=1, dilation_size=2)
@@ -228,7 +252,6 @@ def cloud_masking(gdir):
     # Write Updated DataSet to file
     sentinel.to_netcdf(gdir.get_filepath('cloud_masked'))
     sentinel.close()
-#    shutil.move(gdir.get_filepath('cloud_masked'), gdir.get_filepath('sentinel'))
 
 def plot_cloud_mask(mask, bands, figsize=(15, 15), fig=None):
     """
@@ -243,15 +266,23 @@ def plot_cloud_mask(mask, bands, figsize=(15, 15), fig=None):
 
 @entity_task(log)
 def remove_sides(gdir):
-    """
+    """ Thresholding to remove dark sides
+
     Removes dark sides of glaciers that the glacier mask sometimes does
     not consider and that would lead to misclassification. Thresholding
-    suggested by Paul et al. , 2016: " Glacier remote sensing using sentinel-2.
-    part II: Mapping glacier extents and
-    surface facies and comparison to landsat 8"
-    :param gdir: :py:class:`crampon.GlacierDirectory`
+    of is based on NDSI, all values with NDSI < 0 are not considered in
+    the further classification
+
+    Processed bands stored in sentinel_temp.nc file
+
+    Parameters:
+    ---------
+    gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    :return:
+
+    Returns:
+    ---------
+    None
     """
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('cloud_masked'))
@@ -269,12 +300,7 @@ def remove_sides(gdir):
            (band_array['B03']+band_array['B11'])
     # Apply glacier tresholding as described in Paul et al. 2016
     # for Sentinel Data
-    mask = (NDSI > 0.2) #& \
-#           (0 <= band_array['B04']/band_array['B11']) & \
-#           (band_array['B02']/band_array['B04'] <= 1.2) & \
-#           (0 <= band_array['B08']/band_array['B11'])
-
-# TODOD: check side removal issues...
+    mask = (NDSI > 0.2)
     # Write into netCDF file again
     for band_id in sentinel['band'].values:
         band_array[band_id][mask == False] = 0

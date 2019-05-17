@@ -3,24 +3,48 @@ from oggm.utils import *
 from rasterio.mask import mask as riomask
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio.crs import CRS
+import rasterio.plot
 import rasterio
 import fiona
 import xarray
 import geopandas as gpd
+import matplotlib.pyplot as plt
+
 
 log = logging.getLogger(__name__)
 
 @entity_task(log)
+def crop_satdata_to_glacier(gdir):
+    """"Crops sentinel data to glacier grid:
+    - all 12 Sentinel Bands in crop_sentinel_to_glacier
+    - Solar Zenith and Azimuth Angle in crop_metadata_to_glacier
+    - DEM in same projection as Sentinel Tile in crop_dem_to_glacier
+    """
+
+    crop_sentinel_to_glacier(gdir)
+    crop_metadata_to_glacier(gdir)
+    crop_dem_to_glacier(gdir)
+
+
 def crop_sentinel_to_glacier(gdir):
     """
-    Crop 10 Meter resolution Geotiff to netcdf file
-    for each individual glacier, change projection to local crs
-    :param gdir:
-    :return: None
+    Crop 10 Meter resolution Geotiff to glacier extent
+
+    Reads Sentinel Imagery from merged GeoTiff of entinre Area of interest
+    , crops to individual glacier, changes projection to local crs and
+    saves into netCDF file for current date
+
+    Parameters:
+    --------
+    gdir:
+
+    Returns:
+    --------
+    None
     """
     img_path = os.path.join(os.path.join(
                              cfg.PATHS['working_dir'],
-                             'cache',str(cfg.PARAMS['date'][0]),
+                             'cache', str(cfg.PARAMS['date'][0]),
                              'mosaic'))
     img_list = os.listdir(img_path)
     img_list = [os.path.join(img_path, band) for band in img_list]
@@ -31,19 +55,27 @@ def crop_sentinel_to_glacier(gdir):
     time_stamp = cfg.PARAMS['date'][0]
     file_group = 'sentinel'
 
-
     crop_geotiff_to_glacier(gdir, img_list,  dim_name, dim_label,
                             var_name, time_stamp, file_group)
 
 
-@entity_task(log)
 def crop_metadata_to_glacier(gdir):
     """
-        Crop 10 Meter resolution Geotiff of solar angles to netcdf file
-        for each individual glacier, change projection to local crs
-        :param gdir:
-        :return: None
-        """
+    Crop 10 Meter resolution Geotiff to glacier extent
+
+    Reads Solar Angles of Sentinel Imagery from merged GeoTiff
+    of entire Area of interest, crops to individual glacier,
+     changes projection to local crs and
+    saves into netCDF file for current date
+
+    Parameters:
+    --------
+    gdir:
+
+    Returns:
+    --------
+    None
+    """
     img_path = os.path.join(os.path.join(
         cfg.PATHS['working_dir'],
         'cache', str(cfg.PARAMS['date'][0]),
@@ -59,13 +91,22 @@ def crop_metadata_to_glacier(gdir):
     crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                             var_name, time_stamp, file_group)
 
-@entity_task(log)
 def crop_dem_to_glacier(gdir):
     """
-    Crop 10 Meter resolution Geotiff of dem to netcdf file
-    for each individual glacier, change projection to local crs
-    :param gdir:
-    :return: None
+    Crop 10 Meter resolution Geotiff of DEM
+    to glacier extent
+
+    Reads DEM of entinre Area of interest
+    , crops to individual glacier, changes projection to local crs and
+    saves into netCDF file for current date
+
+    Parameters:
+    --------
+    gdir:
+
+    Returns:
+    --------
+    None
     """
     img_path = cfg.PATHS['dem_dir']
     img_list = os.listdir(img_path)
@@ -75,6 +116,59 @@ def crop_dem_to_glacier(gdir):
     var_name = 'height_in_m'
     time_stamp = 20180101
     file_group = 'dem_ts'
+
+    # check if cropped dem for glacier already exists:
+    if os.path.isfile(os.path.join(gdir.get_filepath('dem_ts'))):
+        # exit function, no need to read again
+        return
+
+    # for first time:
+    # Project DEM to same crs as sentinel tiles:
+
+    # get crs from sentinel tile:
+    with rasterio.open(os.path.join(os.path.join(os.path.join(
+            cfg.PATHS['working_dir'],
+            'cache', str(cfg.PARAMS['date'][0]),
+            'mosaic')), os.listdir(os.path.join(os.path.join(
+                 cfg.PATHS['working_dir'],
+                'cache', str(cfg.PARAMS['date'][0]),
+            'mosaic')))[1])) as sentinel:
+        dst_crs = sentinel.crs
+    dst_crs = 'EPSG:32632'
+
+    for band in img_list:
+        with rasterio.open(band) as src:
+            if dst_crs == src.crs:
+                # DEM is already reprojected
+                crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
+                                        var_name, time_stamp, file_group)
+
+            else: # reproject
+                # TODO: something is not right with reprojection...
+                print(src.crs)
+                src_crs = CRS.to_proj4(src.crs)
+                transform, width, height = calculate_default_transform(
+                    src_crs, dst_crs, src.width, src.height, *src.bounds)
+                kwargs = src.meta.copy()
+                kwargs.update({
+                    'crs': dst_crs,
+                    'transform': transform,
+                    'width': width,
+                    'height': height
+                })
+
+                with rasterio.open(band, 'w', **kwargs) as dst:
+                    for i in range(1, src.count + 1):
+                        # safe reprojected file:
+                        reproject(
+                            source=rasterio.band(src, i),
+                            destination=rasterio.band(dst, i),
+                            src_transform=src.transform,
+                            src_crs=src_crs,
+                            dst_transform=transform,
+                            dst_crs=dst_crs,
+                            resampling=Resampling.nearest)
+                    print(dst.meta)
 
     crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                             var_name, time_stamp, file_group)
@@ -142,12 +236,14 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                     # Read local geometry
                     features = [feature["geometry"] for feature in glacier_reprojected]
 
+
             # --- 1.   Open file: CROP file to glacier outline
 
             try:
                 out_image, out_transform = rasterio.mask.mask(src, features,
                                                               crop=True)
             except ValueError:
+                # Glacier not located in tile
                 return
             out_meta = src.meta.copy()
             out_meta.update({"driver": "GTiff",

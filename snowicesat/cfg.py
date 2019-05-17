@@ -15,15 +15,10 @@ from oggm.cfg import initialize as oggminitialize
 
 import logging
 import os
-import shutil
 import sys
-import glob
 from collections import OrderedDict
-from distutils.util import strtobool
 
 import numpy as np
-import pandas as pd
-import geopandas as gpd
 from configobj import ConfigObj, ConfigObjError
 
 # Defaults
@@ -111,6 +106,8 @@ _doc = 'Figure containing mapped snow cover with improved Nageli Method'
 CBASENAMES['plt_impr_naegeli'] = ('plot_impr_naegeli.png', _doc)
 _doc = 'Figure containing mapped snow cover with Naegeli Method'
 CBASENAMES['plt_naegeli'] = ('plot_naegeli.png', _doc)
+_doc = 'Figure showing cloud mask detected by s2cloudless'
+CBASENAMES['plt_cloud_mask'] = ('plot_cloud_mask.png', _doc)
 
 
 CPARAMS['date'] = ['date']
@@ -122,8 +119,6 @@ CPARAMS['tile_id'] = ['']
 NAMES['DHM25'] = 'dhm25'
 NAMES['SWISSALTI2010'] = 'alti'
 NAMES['LFI'] = 'lfi'
-
-#
 
 
 def initialize(file=None):
@@ -149,7 +144,6 @@ def initialize(file=None):
     global RGI_SUBREG_NAMES
 
     # This is necessary as OGGM still refers to its own initialisation
-    #oggminitialize(file=file)
     oggminitialize()
     import oggm.cfg as oggmcfg
 

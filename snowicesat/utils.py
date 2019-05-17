@@ -19,9 +19,9 @@ import sys
 import os
 import xml.etree.ElementTree as ET
 import numpy as np
-
+from crampon import GlacierDirectory
 log = logging.getLogger(__name__)
-
+print(cfg.PATHS)
 
 def parse_credentials_file_snowicesat(credfile=None):
     """ Reads .credential file for sentinelhub login, username and password

@@ -80,7 +80,6 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
     proj_out = pyproj.Proj(proj4_str, preserve_units=True)
     project = partial(pyproj.transform, proj_in, proj_out)
 
-    # TODO: crampon. Here single outlines should be transformed and their union used
     # for defining the grid
     # transform geometry to map
     geometry = shapely.ops.transform(project, entity['geometry'])
@@ -100,9 +99,11 @@ def define_glacier_region_snowicesat(gdir, entity=None, reset_dems=False):
     tmp_grid = salem.Grid(proj=proj_out, nxny=(nx, ny), x0y0=(ulx, uly),
                           dxdy=(dx, -dx), pixel_ref='corner')
     minlon, maxlon, minlat, maxlat = tmp_grid.extent_in_crs(crs=salem.wgs84)
+
     # save transformed geometry to disk
     entity = entity.copy()
     entity['geometry'] = geometry
+
     # Avoid fiona bug: https://github.com/Toblerity/Fiona/issues/365
     for k, s in entity.iteritems():
         if type(s) in [np.int32, np.int64]:

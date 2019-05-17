@@ -77,30 +77,10 @@ def asmag_snow_mapping(gdir):
     SLA = get_SLA_asmag(gdir, snow)
     if SLA is None:
         SLA = 0
-    if not val == 1:
-        fig = plt.figure(figsize=(15, 10))
-        plt.subplot(1, 3, 1)
-        plt.plot(bins_center, hist, lw=2)
-        plt.axvline(val, color='k', ls='--')
-        plt.title('Histogram and Otsu-Treshold')
 
-        plt.subplot(1, 3, 2)
-        plt.imshow(nir, cmap='gray')
-        b04 = sentinel.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-        b03 = sentinel.sel(band='B03', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-        b02 = sentinel.sel(band='B02', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-
-        rgb_image = np.array([b04, b03, b02]).transpose((1, 2, 0))
-
-        plt.imshow(rgb_image)
-        plt.title('RGB Image')
-        plt.subplot(1, 3, 3)
-        plt.imshow(nir, cmap='gray')
-        plt.imshow(snow, alpha=0.5)
-        plt.title('Snow Covered Area after Ostu-Tresholding')
-        plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
-        plt.show()
-        plt.savefig(gdir.get_filepath('plt_otsu'), bbox_inches='tight')
+    # Write pixel that are 0 in sentinel bands as nodata value (-999)
+    # so they dont get confused with ice area
+    snow[sentinel.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values == 0] = -999
 
     # write snow map to netcdf:
     if not os.path.exists(gdir.get_filepath('snow_cover')):
@@ -134,7 +114,7 @@ def asmag_snow_mapping(gdir):
     sentinel.close()
     snow_new.close()
 
-def get_SLA_asmag(gdir, snow):
+def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
     """Snow line altitude retrieval as described in the
     ASMAG algorithm.
 
@@ -151,8 +131,15 @@ def get_SLA_asmag(gdir, snow):
     ----------
     gdir: :py:class:`crampon.GlacierDirectory`
                     A GlacierDirectory instance.
-            snow: binary snow cover map of area in
-            GlacierDirectory as np-Array
+    snow: np_array:
+            binary snow cover map of area in
+            GlacierDirectory
+    band_height: int:(optional, default = 20 m)
+            height of elevation band to look at for
+            SLA determination in m
+    bands: int: (optional, default = 5)
+            amount of continuous bands to start looking at to determine SLA
+
 
     Returns:
          SLA in meters (None if no snow covered bands)
@@ -181,7 +168,6 @@ def get_SLA_asmag(gdir, snow):
                     # Expand grid on boundaries to obtain raster in same shape after
 
             # find all pixels with same elevation between "height" and "height-20":
-            band_height = 20
             while band_height > 0:
                 snow_band = snow[(elevation_grid > (height - band_height))
                                  & (elevation_grid < height)]
@@ -195,7 +181,6 @@ def get_SLA_asmag(gdir, snow):
             else:
                 cover.append(snow_band[snow_band == 1].size / snow_band.size)
 
-    bands = 5
     num = 0
     if any(loc_cover > 0.5 for loc_cover in cover):
         while num < len(cover):
@@ -241,145 +226,76 @@ def naegeli_snow_mapping(gdir):
     ---------
     None
     """
+
+    # Primary surface type evaluation:
+
     try:
-        sentinel = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
-    except FileNotFoundError:
-        return
-    if not sentinel.sel(band='B03', time=cfg.PARAMS['date'][0]). \
-            img_values.values.any():  # check if all non-zero values in array
-        # Cloud cover too high for a good classification
+        snow, ambig, elevation_grid, albedo_ind = primary_surface_type_evaluation(gdir)
+    except TypeError:
+        # Function Returns None: No image for this glacier available
         return
 
-    dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
-    elevation_grid = dem_ts.isel(time=0, band=0).height_in_m.values
+    # Albedo slope: get DEM and albedo of ambigous range, transform into vector
+    if ambig.any():  # only use if ambigious area contains any True values
+        dem_amb = elevation_grid[ambig]
+        albedo_amb = albedo_ind[ambig]
 
-    # Albedo shortwave to broadband conversion after Knap:
-    albedo_k = 0.726 * sentinel.sel(band='B03',
-                                    time=cfg.PARAMS['date'][0]).img_values.values / 10000 \
-               + 0.322 * (sentinel.sel(band='B03',
-                                       time=cfg.PARAMS['date'][0]).img_values.values / 10000) ** 2 \
-               + 0.015 * sentinel.sel(band='B08',
-                                      time=cfg.PARAMS['date'][0]).img_values.values / 10000 \
-               + 0.581 * (sentinel.sel(band='B08',
-                                       time=cfg.PARAMS['date'][0]).img_values.values / 10000) ** 2
+        # Write dem and albedo into pandas DataFrame:
+        df = pd.DataFrame({'dem_amb': dem_amb.tolist(),
+                           'albedo_amb': albedo_amb.tolist()})
+        # Sort values by elevation, drop negative values:
+        df = df.sort_values(by=['dem_amb'])
+        df = df[df.dem_amb > 0]
+         # 2. find location with maximum albedo slope
+        albedo_crit, SLA = max_albedo_slope_orig(df)
+        # Result: both have very similar results, but fitting
+        # function seems more stable --> will use this value
 
-    # TODO: try with nir band only
-    # #Albedo conversion after Liang
-    # albedo_l = 0.356 * sentinel.sel(band='B02', time=cfg.PARAMS['date'][0]).img_values.values/10000 \
-    #            + 0.130 * sentinel.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values/10000 \
-    #            + 0.373 * sentinel.sel(band='B08', time=cfg.PARAMS['date'][0]).img_values.values/10000 \
-    #            + 0.085 * sentinel.sel(band='B11', time=cfg.PARAMS['date'][0]).img_values.values/10000 \
-    #            + 0.072 * sentinel.sel(band='B12', time=cfg.PARAMS['date'][0]).img_values.values/10000 \
-    #            + 0.0018
-    # Limit Albedo to 1
-    albedo_k[albedo_k > 1] = 1
-    albedo = [albedo_k]
-    plt.figure(figsize=(15, 10))
-    plt.subplot(2, 2, 1)
-    b04 = sentinel.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-    b03 = sentinel.sel(band='B03', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-    b02 = sentinel.sel(band='B02', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-    rgb_image = np.array([b04, b03, b02]).transpose((1, 2, 0))
-    plt.imshow(albedo_k, cmap='gray')
-    plt.imshow(rgb_image)
-    plt.title("RGB Image")  # Peform primary suface type evaluation: albedo > 0.55 = snow,
-    # albedo < 0.25 = ice, 0.25 < albedo < 0.55 = ambigous range,
-    # Pixel-wise
-    for albedo_ind in albedo:
-        if albedo_ind.shape != elevation_grid.shape:
-            if elevation_grid.shape[0] > albedo_ind.shape[0] or \
-                    elevation_grid.shape[1] > albedo_ind.shape[1]:  # Shorten elevation grid
-                elevation_grid = elevation_grid[0:albedo_ind.shape[0], 0:albedo_ind.shape[1]]
-            if elevation_grid.shape[0] < albedo_ind.shape[0]:  # Extend elevation grid: append row:
-                elevation_grid = np.append(elevation_grid,
-                                           [elevation_grid[
-                                            (elevation_grid.shape[0] -
-                                             albedo_ind.shape[0]), :]], axis=0)
-            if elevation_grid.shape[1] < albedo_ind.shape[1]:  # append column
-                b = elevation_grid[:, (elevation_grid.shape[1] -
-                                       albedo_ind.shape[1])]. \
-                    reshape(elevation_grid.shape[0], 1)
-                elevation_grid = np.hstack((elevation_grid, b))
-                # Expand grid on boundaries to obtain raster in same shape after
-        snow = albedo_ind > 0.55
-        ambig = (albedo_ind < 0.55) & (albedo_ind > 0.2)
-        plt.subplot(2, 2, 2)
-        plt.imshow(albedo_ind)
-        plt.imshow(snow * 2 + 1 * ambig, cmap="Blues_r")
-        plt.contour(elevation_grid, cmap="hot",
-                    levels=list(
-                        range(int(elevation_grid[elevation_grid > 0].min()),
-                              int(elevation_grid.max()),
-                              int((elevation_grid.max() -
-                                   elevation_grid[elevation_grid > 0].min()) / 10)
-                              )))
-        plt.colorbar()
-        plt.title("Snow and Ambig. Area")
-
-        # Find critical albedo: albedo at location with highest albedo slope
-        # (assumed to be snow line altitude)
-
-        # Albedo slope: get DEM and albedo of ambigous range, transform into vector
-        if ambig.any():  # only use if ambigious area contains any True values
-            dem_amb = elevation_grid[ambig]
-            albedo_amb = albedo_ind[ambig]
-
-            # Write dem and albedo into pandas DataFrame:
-            df = pd.DataFrame({'dem_amb': dem_amb.tolist(),
-                               'albedo_amb': albedo_amb.tolist()})
-            # Sort values by elevation, drop negative values:
-            df = df.sort_values(by=['dem_amb'])
-            df = df[df.dem_amb > 0]
-
-            # 2. find location with maximum albedo slope
-            albedo_crit, SLA = max_albedo_slope_orig(df)
-
-            # Result: both have very similar results, but fitting
-            # function seems more stable --> will use this value
-
-            # Derive corrected albedo with outlier suppression:
-            albedo_corr = albedo_ind
-            r_crit = 400
-
-            for i in range(0, ambig.shape[0]):
-                for j in range(0, ambig.shape[1]):
-                    if ambig[i, j]:
-                        albedo_corr[i, j] = albedo_ind[i, j] - \
-                                            (SLA - elevation_grid[i, j]) * 0.005
-                        # Secondary surface type evaluation on ambiguous range:
-                        if albedo_corr[i, j] > albedo_crit:
-                            snow[i, j] = True
-                    # Probability test to eliminate extreme outliers:
-                    if elevation_grid[i, j] < (SLA - r_crit):
-                        snow[i, j] = False
-                    if elevation_grid[i, j] > (SLA + r_crit):
+        # Derive corrected albedo with outlier suppression:
+        albedo_corr = albedo_ind
+        r_crit = 400
+        for i in range(0, ambig.shape[0]):
+            for j in range(0, ambig.shape[1]):
+                if ambig[i, j]:
+                    albedo_corr[i, j] = albedo_ind[i, j] - \
+                                        (SLA - elevation_grid[i, j]) * 0.005
+                    # Secondary surface type evaluation on ambiguous range:
+                    if albedo_corr[i, j] > albedo_crit:
                         snow[i, j] = True
-        else:  # if no values in ambiguous area -->
-            r_crit = 400
-            # either all snow covered or no snow at all
-            if snow[snow == 1].size / snow.size > 0.9:  # high snow cover:
-                # Set SLA to lowest limit
-                SLA = elevation_grid[elevation_grid > 0].min()
-            elif snow[snow == 1].size / snow.size < 0.1:  # low/no snow cover:
-                SLA = elevation_grid.max()
+                # Probability test to eliminate extreme outliers:
+                if elevation_grid[i, j] < (SLA - r_crit):
+                    snow[i, j] = False
+                if elevation_grid[i, j] > (SLA + r_crit):
+                    snow[i, j] = True
+    else:  # if no values in ambiguous area -->
+        r_crit = 400
+        # either all snow covered or no snow at all
+        if snow[snow == 1].size / snow.size > 0.9:  # high snow cover:
+            # Set SLA to lowest limit
+            SLA = elevation_grid[elevation_grid > 0].min()
+        elif snow[snow == 1].size / snow.size < 0.1:  # low/no snow cover:
+            SLA = elevation_grid.max()
+    plt.subplot(2, 2, 4)
+    plt.imshow(albedo_ind)
+    plt.imshow(snow * 1, cmap="Blues_r")
+    plt.contour(elevation_grid, cmap="hot",
+                levels=list(
+                    range(int(elevation_grid[elevation_grid > 0].min()),
+                        int(elevation_grid.max()),
+                        int((elevation_grid.max() -
+                             elevation_grid[elevation_grid > 0].min()) / 10)
+                         )))
+    plt.colorbar()
+    plt.contour(elevation_grid, cmap='Greens',
+                levels=[SLA - r_crit, SLA, SLA + r_crit])
+    plt.title("Final snow mask Orig.")
+    plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
+#    plt.show()
+    plt.savefig(gdir.get_filepath('plt_naegeli'), bbox_inches='tight')
 
-        plt.subplot(2, 2, 4)
-        plt.imshow(albedo_k)
-        plt.imshow(snow * 1, cmap="Blues_r")
-        plt.contour(elevation_grid, cmap="hot",
-                    levels=list(
-                        range(int(elevation_grid[elevation_grid > 0].min()),
-                              int(elevation_grid.max()),
-                              int((elevation_grid.max() -
-                                   elevation_grid[elevation_grid > 0].min()) / 10)
-                              )))
-        plt.colorbar()
-        plt.contour(elevation_grid, cmap='Greens',
-                    levels=[SLA - r_crit, SLA, SLA + r_crit])
-        plt.title("Final snow mask Orig.")
-        plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
-        plt.show()
-        plt.savefig(gdir.get_filepath('plt_naegeli'), bbox_inches='tight')
+    # Write pixel that are 0 in sentinel bands as nodata value
+    # so they dont get confused with ice area
+    snow[albedo_ind == 0] = -999
 
     # Save snow cover map to .nc file:
     snow_xr = xr.open_dataset(gdir.get_filepath('snow_cover'))
@@ -402,10 +318,8 @@ def naegeli_snow_mapping(gdir):
         # remove old file:
         os.remove(gdir.get_filepath('snow_cover'))
         snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
-    sentinel.close()
     snow_new.close()
-    sentinel.close()
-    dem_ts.close()
+
 
 
 @entity_task(log)
@@ -442,171 +356,105 @@ def naegeli_improved_snow_mapping(gdir):
     ---------
     None
     """
+    # Primary surface type evaluation:
+
     try:
-        sentinel = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
-    except FileNotFoundError:
-        return
-    if not sentinel.sel(band='B03', time=cfg.PARAMS['date'][0]). \
-            img_values.values.any():  # check if all non-zero values in array
-        # Cloud cover too high for a good classification
+        snow, ambig, elevation_grid, albedo_ind = primary_surface_type_evaluation(gdir)
+    except TypeError:
+        # Function Returns None: No image for this glacier available
         return
 
-    dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
-    elevation_grid = dem_ts.isel(time=0, band=0).height_in_m.values
-
-    # Albedo shortwave to broadband conversion after Knap:
-    albedo_k = 0.726 * sentinel.sel(band='B03',
-                                    time=cfg.PARAMS['date'][0]).img_values.values / 10000 \
-               + 0.322 * (sentinel.sel(band='B03',
-                                       time=cfg.PARAMS['date'][0]).img_values.values / 10000) ** 2 \
-               + 0.015 * sentinel.sel(band='B08',
-                                      time=cfg.PARAMS['date'][0]).img_values.values / 10000 \
-               + 0.581 * (sentinel.sel(band='B08',
-                                       time=cfg.PARAMS['date'][0]).img_values.values / 10000) ** 2
-
-    # TODO: try with nir band only
-    # #Albedo conversion after Liang
-    # albedo_l = 0.356 * sentinel.sel(band='B02', time=cfg.PARAMS['date'][0]).img_values.values/10000 \
-    #            + 0.130 * sentinel.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values/10000 \
-    #            + 0.373 * sentinel.sel(band='B08', time=cfg.PARAMS['date'][0]).img_values.values/10000 \
-    #            + 0.085 * sentinel.sel(band='B11', time=cfg.PARAMS['date'][0]).img_values.values/10000 \
-    #            + 0.072 * sentinel.sel(band='B12', time=cfg.PARAMS['date'][0]).img_values.values/10000 \
-    #            + 0.0018
-    # Limit Albedo to 1
-    albedo_k[albedo_k > 1] = 1
-    albedo = [albedo_k]
-    plt.figure(figsize=(15, 10))
-    plt.subplot(2, 2, 1)
-    b04 = sentinel.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-    b03 = sentinel.sel(band='B03', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-    b02 = sentinel.sel(band='B02', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-    rgb_image = np.array([b04, b03, b02]).transpose((1, 2, 0))
-    plt.imshow(albedo_k, cmap='gray')
-    plt.imshow(rgb_image)
-    plt.title("RGB Image")  # Peform primary suface type evaluation: albedo > 0.55 = snow,
-    # albedo < 0.25 = ice, 0.25 < albedo < 0.55 = ambigous range,
-    # Pixel-wise
-    for albedo_ind in albedo:
-        if albedo_ind.shape != elevation_grid.shape:
-            if elevation_grid.shape[0] > albedo_ind.shape[0] or \
-                    elevation_grid.shape[1] > albedo_ind.shape[1]:  # Shorten elevation grid
-                elevation_grid = elevation_grid[0:albedo_ind.shape[0], 0:albedo_ind.shape[1]]
-            if elevation_grid.shape[0] < albedo_ind.shape[0]:  # Extend elevation grid: append row:
-                elevation_grid = np.append(elevation_grid,
-                                           [elevation_grid[
-                                            (elevation_grid.shape[0] -
-                                             albedo_ind.shape[0]), :]], axis=0)
-            if elevation_grid.shape[1] < albedo_ind.shape[1]:  # append column
-                b = elevation_grid[:, (elevation_grid.shape[1] -
-                                       albedo_ind.shape[1])]. \
-                    reshape(elevation_grid.shape[0], 1)
-                elevation_grid = np.hstack((elevation_grid, b))
-                # Expand grid on boundaries to obtain raster in same shape after
-        snow = albedo_ind > 0.55
-        ambig = (albedo_ind < 0.55) & (albedo_ind > 0.2)
-        plt.subplot(2, 2, 2)
-        plt.imshow(albedo_ind)
-        plt.imshow(snow * 2 + 1 * ambig, cmap="Blues_r")
-        plt.contour(elevation_grid, cmap="hot",
-                    levels=list(
-                        range(int(elevation_grid[elevation_grid > 0].min()),
-                              int(elevation_grid.max()),
-                              int((elevation_grid.max() -
-                                   elevation_grid[elevation_grid > 0].min()) / 10)
-                              )))
-        plt.colorbar()
-        plt.title("Snow and Ambig. Area")
-
-        # Find critical albedo: albedo at location with highest albedo slope
-        # (assumed to be snow line altitude)
+    # Find critical albedo: albedo at location with highest albedo slope
+    # (assumed to be snow line altitude)
 
         # Albedo slope: get DEM and albedo of ambigous range, transform into vector
-        if ambig.any():  # only use if ambigious area contains any True values
-            dem_amb = elevation_grid[ambig]
-            albedo_amb = albedo_ind[ambig]
+    if ambig.any():  # only use if ambigious area contains any True values
+        dem_amb = elevation_grid[ambig]
+        albedo_amb = albedo_ind[ambig]
+         # Write dem and albedo into pandas DataFrame:
+        df = pd.DataFrame({'dem_amb': dem_amb.tolist(),
+                           'albedo_amb': albedo_amb.tolist()})
+        # Sort values by elevation, drop negative values:
+        df = df.sort_values(by=['dem_amb'])
 
-            # Write dem and albedo into pandas DataFrame:
-            df = pd.DataFrame({'dem_amb': dem_amb.tolist(),
-                               'albedo_amb': albedo_amb.tolist()})
-            # Sort values by elevation, drop negative values:
-            df = df.sort_values(by=['dem_amb'])
+        # Try two ways to obatin critical albedo:
+        # 1. Fitting to step function:
+        # albedo_crit_fit, SLA_fit = max_albedo_slope_fit(df)
+        # 2. Iterate over elevation bands with increasing resolution
+        albedo_crit_it, SLA_it, r_square = max_albedo_slope_iterate(df)
+        # Result: both have very similar results, but fitting
+        # function seems more stable --> will use this value
+        SLA = SLA_it
+        albedo_crit = albedo_crit_it
+        # Derive corrected albedo with outlier suppression:
+        albedo_corr = albedo_ind
+        r_crit = 400
+         # Make r_crit dependant on r_squared value (how well
+         # does a step function model fit the elevation-albedo-profile?
+         # Maximum for r_crit: maximum of elevation distance between SLA
+         # and either lowest or highest snow-covered pixel
+        if snow[snow * 1 == 1].size > 0:
+            r_crit_max = max(SLA - elevation_grid[snow * 1 == 1][
+                elevation_grid[snow * 1 == 1] > 0].min(),
+                             elevation_grid[snow * 1 == 1].max() - SLA)
+        else:
+            r_crit_max = elevation_grid[elevation_grid > 0].max() - SLA
+        r_crit = - r_square * r_crit_max + r_crit_max
+        r_crit = min(r_crit_max, r_crit)
 
-            # Try two ways to obatin critical albedo:
-            # 1. Fitting to step function:
-            # albedo_crit_fit, SLA_fit = max_albedo_slope_fit(df)
-
-            # 2. Iterate over elevation bands with increasing resolution
-            albedo_crit_it, SLA_it, r_square = max_albedo_slope_iterate(df)
-
-            # Result: both have very similar results, but fitting
-            # function seems more stable --> will use this value
-            SLA = SLA_it
-            albedo_crit = albedo_crit_it
-
-            # Derive corrected albedo with outlier suppression:
-            albedo_corr = albedo_ind
-            r_crit = 400
-
-            # Make r_crit dependant on r_squared value (how well
-            # does a step function model fit the elevation-albedo-profile?
-
-            # Maximum for r_crit: maximum of elevation distance between SLA
-            # and either lowest or highest snow-covered pixel
-            if snow[snow * 1 == 1].size > 0:
-                r_crit_max = max(SLA - elevation_grid[snow * 1 == 1][
-                    elevation_grid[snow * 1 == 1] > 0].min(),
-                                 elevation_grid[snow * 1 == 1].max() - SLA)
-            else:
-                r_crit_max = elevation_grid[elevation_grid > 0].max() - SLA
-            r_crit = - r_square * r_crit_max + r_crit_max
-            r_crit = min(r_crit_max, r_crit)
-
-            for i in range(0, ambig.shape[0]):
-                for j in range(0, ambig.shape[1]):
-                    if ambig[i, j]:
-                        albedo_corr[i, j] = albedo_ind[i, j] - \
-                                            (SLA - elevation_grid[i, j]) * 0.005
-                        # Secondary surface type evaluation on ambiguous range:
-                        if albedo_corr[i, j] > albedo_crit:
-                            snow[i, j] = True
-                    # Probability test to eliminate extreme outliers:
-                    if elevation_grid[i, j] < (SLA - r_crit):
-                        snow[i, j] = False
-                    if elevation_grid[i, j] > (SLA + r_crit):
+        #Secondary Surface type Evaluation:
+        for i in range(0, ambig.shape[0]):
+            for j in range(0, ambig.shape[1]):
+                if ambig[i, j]:
+                    albedo_corr[i, j] = albedo_ind[i, j] - \
+                                        (SLA - elevation_grid[i, j]) * 0.005
+                    # Secondary surface type evaluation on ambiguous range:
+                    if albedo_corr[i, j] > albedo_crit:
                         snow[i, j] = True
-        else:  # if no values in ambiguous area -->
-            r_crit = 400
-            # either all now covered or no snow at all
-            if snow[snow == 1].size / snow.size > 0.9:  # high snow cover:
-                # Set SLA to lowest limit
-                SLA = elevation_grid[elevation_grid > 0].min()
-            elif snow[snow == 1].size / snow.size < 0.1:  # low/no snow cover:
-                SLA = elevation_grid.max()
+                # Probability test to eliminate extreme outliers:
+                if elevation_grid[i, j] < (SLA - r_crit):
+                    snow[i, j] = False
+                if elevation_grid[i, j] > (SLA + r_crit):
+                    snow[i, j] = True
+    else:  # if no values in ambiguous area -->
+        r_crit = 400
+        # either all now covered or no snow at all
+        if snow[snow == 1].size / snow.size > 0.9:  # high snow cover:
+            # Set SLA to lowest limit
+            SLA = elevation_grid[elevation_grid > 0].min()
+        elif snow[snow == 1].size / snow.size < 0.1:  # low/no snow cover:
+            SLA = elevation_grid.max()
 
-        plt.subplot(2, 2, 4)
-        plt.imshow(albedo_k)
-        plt.imshow(snow * 1, cmap="Blues_r")
-        plt.contour(elevation_grid, cmap="hot",
-                    levels=list(
-                        range(int(elevation_grid[elevation_grid > 0].min()),
-                              int(elevation_grid.max()),
-                              int((elevation_grid.max() -
-                                   elevation_grid[elevation_grid > 0].min()) / 10)
-                              )))
-        plt.colorbar()
-        plt.contour(elevation_grid, cmap='Greens',
-                    levels=[SLA - r_crit, SLA, SLA + r_crit])
-        plt.title("Final snow mask")
-        plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
-        plt.show()
-        plt.savefig(gdir.get_filepath('plt_impr_naegeli'), bbox_inches='tight')
+    # Write pixel that are 0 in sentinel bands as nodata value
+    # so they dont get confused with ice area
+    snow[albedo_ind == 0] = -999
 
-    # Save snow cover map to .nc file:
+    plt.subplot(2, 2, 4)
+    plt.imshow(albedo_ind)
+    plt.imshow(snow * 1, cmap="Blues_r")
+    plt.contour(elevation_grid, cmap="hot",
+                levels=list(
+                   range(int(elevation_grid[elevation_grid > 0].min()),
+                         int(elevation_grid.max()),
+                         int((elevation_grid.max() -
+                              elevation_grid[elevation_grid > 0].min()) / 10)
+                          )))
+    plt.colorbar()
+    plt.contour(elevation_grid, cmap='Greens',
+                levels=[SLA - r_crit, SLA, SLA + r_crit])
+    plt.title("Final snow mask")
+    plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
+#    plt.show()
+    plt.savefig(gdir.get_filepath('plt_impr_naegeli'), bbox_inches='tight')
+
+
+  # Save snow cover map to .nc file:
     snow_xr = xr.open_dataset(gdir.get_filepath('snow_cover'))
     # calculate SLA from snow cover map:
     SLA_new = get_SLA_asmag(gdir, snow)
     if SLA_new is None:
         SLA_new = SLA
+
     SLA = SLA_new
     # write variables into dataset:
     snow_xr['snow_map'].loc[dict(model='naegeli_improv', time=cfg.PARAMS['date'][0])] = snow
@@ -624,8 +472,6 @@ def naegeli_improved_snow_mapping(gdir):
 
     snow_new.close()
     snow_xr.close()
-    sentinel.close()
-    dem_ts.close()
 
 
 def max_albedo_slope_iterate(df):
@@ -743,19 +589,9 @@ def max_albedo_slope_iterate(df):
     #                                    to  dem_max - (dem_max -SLA)/2
     # c: average albedo of bare ice: 0.25-0.55
 
-    try:
-        popt, pcov = curve_fit(model, dem_avg, albedo_avg,
-                           bounds=([0.1, dem_min + (height_max_slope - dem_min)/2, 0.3],
+    r_squared = get_r_squared(step_function_model, dem_avg, albedo_avg,
+                              bounds = ([0.1, dem_min + (height_max_slope - dem_min)/2, 0.3],
                                    [0.3, dem_max - (dem_max -height_max_slope)/2, 0.45]))
-        residuals = abs(albedo_avg - model(dem_avg, popt[0], popt[1], popt[2]))
-        ss_res = np.sum(residuals ** 2)
-        ss_tot = np.sum((albedo_avg - np.mean(albedo_avg)) ** 2)
-        r_squared = 1 - (ss_res / ss_tot)
-    except ValueError:
-        print("What's the problem here?")
-        r_squared = -1
-
-
 
     return alb_max_slope, height_max_slope, r_squared
 
@@ -851,7 +687,7 @@ def max_albedo_slope_orig(df):
     return alb_max_slope, height_max_slope
 
 
-def model(alti, a, b, c):
+def step_function_model(alti, a, b, c):
     """ Create model for step-function
 
     Parameters:
@@ -863,6 +699,182 @@ def model(alti, a, b, c):
 
     Returns:
     ---------
-    model of step-function as np.array with given input parameters
+    model of step-function as np.array with gi
     """
     return (0.5 * (np.sign(alti - b) + 1)) * a + c  # Heaviside fitting function
+
+def get_r_squared(step_function_model, dem_avg, albedo_avg, bounds):
+    """
+    Retrieved r_squared value from fitting Step function to elevation-albedo profile:
+
+
+    Parameters:
+    -----------
+    step_function_model: function that creates step function with input parameters
+    dem_avg: np.array: height values elevation bands on glacier with a resolution
+        determined by the iteration method
+    albedo_avg: np.array: albedo values in elevation bands
+    bounds: tuple of two lists: upper and lower parameter range
+                    ([a_min],[b_min], [c_min], [a_max, b_max, c_max])
+        with
+            a: step size of heaviside function: 0.1-0.3
+            b: elevation of snow - ice transition: dem_min + (SLA - dem_min)/2
+                                        to  dem_max - (dem_max -SLA)/2
+            c: average albedo of bare ice: 0.25-0.55
+
+    Returns:
+    -----------
+    r_squared: float: r_squared value (goodness of fit) of fitted step function model
+                to elevation-albedo-profile
+    """
+
+    try:
+        popt, pcov = curve_fit(step_function_model, dem_avg, albedo_avg,
+                           bounds=bounds)
+        residuals = abs(albedo_avg - step_function_model(dem_avg, popt[0], popt[1], popt[2]))
+        ss_res = np.sum(residuals ** 2)
+        ss_tot = np.sum((albedo_avg - np.mean(albedo_avg)) ** 2)
+        r_squared = 1 - (ss_res / ss_tot)
+    except ValueError:
+        print("What's the problem here?")
+        r_squared = -1
+
+    return r_squared
+
+
+def primary_surface_type_evaluation(gdir):
+    """
+    Performs Primary surface type evaluation after K. Naegeli 2019:
+    - Converts reflectance to broadband-Albedo after Knapp et al.
+    - ALbedo > 0.55 is classified as snow, albedo < 0.2 as ice and values in
+    between are the ambiguous range where secondary surface type evaluation is
+    performed on
+
+    Parameters:
+    ------------
+    gdir: GlacierDirectory: pyClass
+
+    Returns:
+    ------------
+    snow: np.array, binary: Snow Covered Area after primary surface type evaluation
+    ambig: np.array, binary: Amiguous Area for secondary surface type evaluation:
+    elevation_grid: np.array: Height of DEM on Glacier in m
+    albedo_ind: np.array: Broadband Surface Albedo in
+    """
+    try:
+        sentinel = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
+    except FileNotFoundError:
+        return
+    if not sentinel.sel(band='B03', time=cfg.PARAMS['date'][0]). \
+            img_values.values.any():  # check if all non-zero values in array
+        # Cloud cover too high for a good classification
+        return
+
+    dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
+    elevation_grid = dem_ts.isel(time=0, band=0).height_in_m.values
+
+    # Albedo shortwave to broadband conversion after Knap:
+    albedo_k = 0.726 * sentinel.sel(band='B03',
+                                    time=cfg.PARAMS['date'][0]).img_values.values / 10000 \
+               + 0.322 * (sentinel.sel(band='B03',
+                                       time=cfg.PARAMS['date'][0]).img_values.values / 10000) ** 2 \
+               + 0.015 * sentinel.sel(band='B08',
+                                      time=cfg.PARAMS['date'][0]).img_values.values / 10000 \
+               + 0.581 * (sentinel.sel(band='B08',
+                                       time=cfg.PARAMS['date'][0]).img_values.values / 10000) ** 2
+
+    # TODO: try with nir band only
+
+    # Limit Albedo to 1
+    albedo_k[albedo_k > 1] = 1
+    albedo = [albedo_k]
+
+    plt.figure(figsize=(15, 10))
+    plt.subplot(2, 2, 1)
+    b04 = sentinel.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values / 10000
+    b03 = sentinel.sel(band='B03', time=cfg.PARAMS['date'][0]).img_values.values / 10000
+    b02 = sentinel.sel(band='B02', time=cfg.PARAMS['date'][0]).img_values.values / 10000
+
+    rgb_image = np.array([b04, b03, b02]).transpose((1, 2, 0))
+    plt.imshow(albedo_k, cmap='gray')
+    plt.imshow(rgb_image)
+    plt.title("RGB Image")
+
+    # Peform primary suface type evaluation: albedo > 0.55 = snow,
+    # albedo < 0.25 = ice, 0.25 < albedo < 0.55 = ambiguous range,
+    # Pixel-wise
+    for albedo_ind in albedo:
+        if albedo_ind.shape != elevation_grid.shape:
+            if elevation_grid.shape[0] > albedo_ind.shape[0] or \
+                    elevation_grid.shape[1] > albedo_ind.shape[1]:  # Shorten elevation grid
+                elevation_grid = elevation_grid[0:albedo_ind.shape[0], 0:albedo_ind.shape[1]]
+            if elevation_grid.shape[0] < albedo_ind.shape[0]:  # Extend elevation grid: append row:
+                elevation_grid = np.append(elevation_grid,
+                                           [elevation_grid[
+                                            (elevation_grid.shape[0] -
+                                             albedo_ind.shape[0]), :]], axis=0)
+            if elevation_grid.shape[1] < albedo_ind.shape[1]:  # append column
+                b = elevation_grid[:, (elevation_grid.shape[1] -
+                                       albedo_ind.shape[1])]. \
+                    reshape(elevation_grid.shape[0], 1)
+                elevation_grid = np.hstack((elevation_grid, b))
+                # Expand grid on boundaries to obtain raster in same shape
+
+        snow = albedo_ind > 0.55
+        ambig = (albedo_ind < 0.55) & (albedo_ind > 0.2)
+
+        plt.subplot(2, 2, 2)
+        plt.imshow(albedo_ind)
+        plt.imshow(snow * 2 + 1 * ambig, cmap="Blues_r")
+        plt.contour(elevation_grid, cmap="hot",
+                    levels=list(
+                        range(int(elevation_grid[elevation_grid > 0].min()),
+                              int(elevation_grid.max()),
+                              int((elevation_grid.max() -
+                                   elevation_grid[elevation_grid > 0].min()) / 10)
+                              )))
+        plt.colorbar()
+        plt.title("Snow and Ambig. Area")
+
+        sentinel.close()
+        dem_ts.close()
+        # Find critical albedo: albedo at location with highest albedo slope
+        # (assumed to be snow line altitude)
+
+    return snow, ambig, elevation_grid, albedo_ind
+
+def albedo_knap(sentinel):
+    """
+    Narrow to broadband albedo conversion after
+    Knap, W.H. et al:
+     Narrowband to broadband conversion
+    of Landsat TM glacier albedos.
+    Int. J. Remote Sens. 1999, 20, 2091–2110
+
+    as adapted for Sentinel-2 Images by
+    Naegeli, Kathrin et al (2017).
+    Cross-comparison of albedo products for glacier surfaces derived from airborne and
+    satellite (Sentinel-2 and Landsat 8) optical data. Remote Sensing, 9(2):110
+
+    Parameters:
+    -------------
+    sentinel: GeoPandas DataSet: all Sentinel Bands for all dates of this scene
+
+    Returns:
+    ------------
+    albedo_k: np.array: Broadband Surfac Albedo
+
+    """
+    albedo_k = 0.726 * sentinel.sel(band='B03',
+                                    time=cfg.PARAMS['date'][0]).\
+                                    img_values.values / 10000 \
+               + 0.322 * (sentinel.sel(band='B03',
+                                       time=cfg.PARAMS['date'][0]).
+                                    img_values.values / 10000) ** 2 \
+               + 0.015 * sentinel.sel(band='B08',
+                                      time=cfg.PARAMS['date'][0]).\
+                                        img_values.values / 10000 \
+               + 0.581 * (sentinel.sel(band='B08',
+                                       time=cfg.PARAMS['date'][0]).
+                                    img_values.values / 10000) ** 2
+    return albedo_k

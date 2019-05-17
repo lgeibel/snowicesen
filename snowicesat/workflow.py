@@ -1,14 +1,15 @@
 from __future__ import absolute_import, division
+import salem
 import os
 import logging
 import snowicesat.cfg as cfg
 from crampon import utils
 from snowicesat.preprocessing import create_gdirs
+from crampon.core.preprocessing import gis
 import crampon
 from shutil import rmtree
-from oggm.workflow import _init_pool_globals, init_mp_pool, _merge_dicts,\
-    _pickle_copier, execute_entity_task, init_glacier_regions
-
+from oggm.workflow import execute_entity_task
+from snowicesat.utils import GlacierDirectory
 # MPI similar to OGGM - not yet implemented
 try:
     import oggm.mpi as ogmpi
@@ -47,7 +48,7 @@ def init_glacier_regions_snowicesat(shapedf=None, reset=False, force=False, all_
     gdirs: list
         A list of the GlacierDirectory objects.
     """
-    print("In init_glacier_regions")
+    print("In init_glacier_regions_snowicesat")
     if reset and not force:
         reset = utils.query_yes_no('Delete all glacier directories?')
 
@@ -66,10 +67,10 @@ def init_glacier_regions_snowicesat(shapedf=None, reset=False, force=False, all_
         gl_dir = os.path.join(cfg.PATHS['working_dir'], 'per_glacier')
         for root, _, files in os.walk(gl_dir):
             if files and ('dem.tif' in files):
-                gdirs.append(crampon.GlacierDirectory(os.path.basename(root)))
+                gdirs.append(GlacierDirectory(os.path.basename(root)))
     else:
         for _, entity in shapedf.iterrows():
-            gdir = crampon.GlacierDirectory(entity, reset=reset)
+            gdir = GlacierDirectory(entity, reset=reset)
             if not os.path.exists(gdir.get_filepath('dem')):
                 new_gdirs.append((gdir, dict(entity=entity)))
             gdirs.append(gdir)
@@ -78,4 +79,6 @@ def init_glacier_regions_snowicesat(shapedf=None, reset=False, force=False, all_
 
 
     return gdirs
+
+init_glacier_regions = init_glacier_regions_snowicesat
 
