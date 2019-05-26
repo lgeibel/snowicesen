@@ -40,6 +40,7 @@ def ekstrand_correction(gdir):
         slope, aspect, hillshade, solar_azimuth, solar_zenith =\
             calc_slope_aspect_hillshade(gdir)
     except TypeError:
+        # Glacier not located in tile
         return
 
     # Open satellite image:
@@ -48,6 +49,7 @@ def ekstrand_correction(gdir):
     except FileNotFoundError:
         # Glacier not located in tile
         return
+    
     b_sub = []
     # Loop over all bands:
     for band_id in sentinel['band'].values:
@@ -143,6 +145,7 @@ def calc_slope_aspect_hillshade(gdir):
              .angles_in_deg.values
         solar_zenith = solar_angles.sel(time=cfg.PARAMS['date'][0], band='solar_zenith')\
              .angles_in_deg.values
+        sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
     except FileNotFoundError:
         # Glacier not located in tile
         return
@@ -158,13 +161,14 @@ def calc_slope_aspect_hillshade(gdir):
                                                      solar_zenith.shape[0]), :]], axis = 0)
         if elevation_grid.shape[1] < solar_zenith.shape[1]: # append column
             b = elevation_grid[:, (elevation_grid.shape[1]-
-                                   solar_zenith.shape[1])].reshape(elevation_grid.shape[0], 1)
+                solar_zenith.shape[1]):elevation_grid.shape[1]]
             elevation_grid = np.hstack((elevation_grid, b))
                 # Expand grid on boundaries to obtain raster in same shape after
         print(solar_zenith.shape, elevation_grid.shape)
-
+    
     # differentiating
     z_bc = utils.assign_bc(elevation_grid)
+    
     # Compute finite differences
     slope_x = (z_bc[1:-1, 2:] - z_bc[1:-1, :-2]) / (2 * dx)
     slope_y = (z_bc[2:, 1:-1] - z_bc[:-2, 1:-1]) / (2 * dx)
@@ -180,8 +184,8 @@ def calc_slope_aspect_hillshade(gdir):
     hillshade = (np.cos(zenith_rad) * np.cos(slope)) + \
                 (np.sin(zenith_rad) * np.sin(slope) *
                  np.cos(azimuth_rad - aspect))
-    #plt.imshow(hillshade)
-    #plt.show()
+   # plt.imshow(hillshade)
+   # plt.show()
 
     return slope, aspect, hillshade, azimuth_rad, zenith_rad
 
@@ -213,6 +217,7 @@ def cloud_masking(gdir):
         sentinel = xr.open_dataset(gdir.get_filepath('ekstrand'))
     except FileNotFoundError:
         return
+
     wms_bands = sentinel.sel(
         band=['B01', 'B02', 'B04', 'B05', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'],
         time=cfg.PARAMS['date'][0])\
@@ -246,6 +251,7 @@ def cloud_masking(gdir):
             band_array.fill(0)
         band_array = band_array[0,:,:]
         sentinel['img_values'].loc[(dict(band=band_id, time=cfg.PARAMS['date'][0]))] = band_array
+
     print("Cloud cover: ", cloud_cover)
 
 

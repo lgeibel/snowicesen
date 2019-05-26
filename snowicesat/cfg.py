@@ -108,6 +108,8 @@ _doc = 'Figure containing mapped snow cover with Naegeli Method'
 CBASENAMES['plt_naegeli'] = ('plot_naegeli.png', _doc)
 _doc = 'Figure showing cloud mask detected by s2cloudless'
 CBASENAMES['plt_cloud_mask'] = ('plot_cloud_mask.png', _doc)
+CBASENAMES['plt_all'] = ('plot_all', _doc)
+_doc = 'Plots all snow maps and SLA for 1 glacier and 1 time step in a figure'
 
 
 CPARAMS['date'] = ['date']

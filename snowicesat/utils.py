@@ -202,6 +202,7 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
     band_list = ["B{:02d}".format(i) for i in range(1, 13)]
     band_list = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06',
          'B07', 'B08', 'B09', 'B10', 'B11', 'B12', 'B8A']
+    print('Tiles Downloaded', tiles_downloaded)
     if tiles_downloaded > 0:
         if clear_cache:
             print("Removing old merged tiles from cache")
@@ -286,9 +287,10 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                         dest.write(mosaic)
 
         # ------ Metadata -----
-        if not os.path.exists(os.path.join(cfg.PATHS['working_dir'],
+        if not os.path.isfile(os.path.join(cfg.PATHS['working_dir'],
                                            'cache', str(cfg.PARAMS['date'][0]),
                                            'meta', "solar_zenith_angles.tif")):
+            print('Extracting SolarAngles to GeoTiff')
             # Extract Metadata for each Tile
             # list of all metadata files for this date
             meta_list = glob.glob(os.path.join(cfg.PATHS['working_dir'], 'cache',
@@ -300,7 +302,7 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                 # Read eaach tile from .xml to GeoTIff and reproject to
             #  10 Meter resolution
                 solar_zenith, solar_azimuth = extract_metadata(meta_name)
-                resample_meta(solar_zenith, solar_azimuth, id)
+                resample_meta(solar_zenith, solar_azimuth, id, meta_name)
                 id = id+1
 
             # Create empty list for datafile
@@ -312,12 +314,13 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                                                str(cfg.PARAMS['date'][0]), 'meta',
                                                 '*zenith.tif'),
                                     recursive=False)
+
             for fp in zenith_list:
                 # Open File, append to list
-                 with rasterio.open(fp) as src:
-                    solar_zenith_to_mosaic.append(src)
-                    # Merge all tiles of zenith angles together
-                    zenith_mosaic, out_trans = merge(solar_zenith_to_mosaic)
+                src = rasterio.open(fp)
+                solar_zenith_to_mosaic.append(src)
+             # Merge all tiles of zenith angles together
+            zenith_mosaic, out_trans = merge(solar_zenith_to_mosaic)
 
             # Update metadata for merges mosaic
             out_meta = src.meta.copy()
@@ -341,10 +344,10 @@ def download_all_tiles(glacier, clear_cache = False, clear_safe = False):
                                     recursive=False)
             for fp in azimuth_list:
                 # Open File, append to list
-                with rasterio.open(fp) as src:
-                    solar_azimuth_to_mosaic.append(src)
-                    # Merge all tiles with solar azimuth angles together
-                    azimuth_mosaic, out_trans = merge(solar_azimuth_to_mosaic)
+                src =  rasterio.open(fp)
+                solar_azimuth_to_mosaic.append(src)
+            # Merge all tiles with solar azimuth angles together
+            azimuth_mosaic, out_trans = merge(solar_azimuth_to_mosaic)
 
             # Open file to write merged mosaic of solar azimuth angles
             with rasterio.open(os.path.join(cfg.PATHS['working_dir'], 'cache',
@@ -435,7 +438,7 @@ def extract_metadata(XML_File):
 
 
 
-def resample_meta(solar_zenith, solar_azimuth, index):
+def resample_meta(solar_zenith, solar_azimuth, index, meta_name):
     """
     Resamples Solar Zenith and solar azimuth angle from 5x5 km
     to 10 m Grid (nearest neighbor) and writes into GeoTIFF
@@ -451,11 +454,11 @@ def resample_meta(solar_zenith, solar_azimuth, index):
     ------------
     None
     """
+    reference_tile = glob.glob(os.path.join(meta_name[:-10],'IMG_DATA','*_B02.jp2'))[0]
 
     # Open 10 m resolution tile to read size and dimension of final tile:
-    with rasterio.open(os.path.join(cfg.PATHS['working_dir'],'cache',
-                                                    str(cfg.PARAMS['date'][0]),'mosaic',
-                                                    str('B02.tif'))) as src:
+    with rasterio.open(reference_tile) as src:
+        
         out_meta = src.meta.copy()
         newarr = src.read()
         newarr = np.squeeze(newarr)
@@ -466,6 +469,7 @@ def resample_meta(solar_zenith, solar_azimuth, index):
                                new_transform.c, new_transform.d,
                                new_transform.e * 500, new_transform.f)
         out_meta['dtype'] = 'float64'
+        out_meta['driver'] = "GTiff"
 
     angles = [solar_zenith, solar_azimuth]
     angles_str = ["solar_zenith.tif", "solar_azimuth.tif"]
@@ -487,6 +491,7 @@ def resample_meta(solar_zenith, solar_azimuth, index):
                      src_crs=src.crs,
                      dst_crs=src.crs,
                      resampling=Resampling.nearest)
+
             dest.write(newarr, indexes=1)
         id = id + 1
 
@@ -497,9 +502,9 @@ def assign_bc(elev_grid):
      This creates a grid 2 rows and 2 columns larger than the input
      Necessary when computing 2-D slopes
     """
+    ny, nx = elev_grid.shape  # size of array
+    z_bc = np.zeros((ny+2, nx +2)) # Create BC
 
-    ny, nx = elev_grid.shape  # Size of array
-    z_bc = np.zeros((ny + 2, nx + 2))  # Create boundary condition array
     z_bc[1:-1,1:-1] = elev_grid  # Insert old grid in center
 
     #Assign boundary conditions - sides

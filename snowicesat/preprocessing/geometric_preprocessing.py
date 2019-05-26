@@ -46,11 +46,10 @@ def crop_sentinel_to_glacier(gdir):
                              cfg.PATHS['working_dir'],
                              'cache', str(cfg.PARAMS['date'][0]),
                              'mosaic'))
-    img_list = os.listdir(img_path)
-    img_list = [os.path.join(img_path, band) for band in img_list]
     dim_name = "band"
     dim_label = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06',
          'B07', 'B08', 'B09', 'B10', 'B11', 'B12', 'B8A']
+    img_list = [os.path.join(img_path, band+'.tif') for band in dim_label]
     var_name = 'img_values'
     time_stamp = cfg.PARAMS['date'][0]
     file_group = 'sentinel'

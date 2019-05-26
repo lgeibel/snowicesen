@@ -5,10 +5,10 @@ channels:
 dependencies:
   - python=3.6
   - oggm
-  - crampon
-  - scipy
-  - s2cloudless
-  - skimage
+  - pip:
+    - s2cloudless
+    - sentinelsat
+
 
 
 

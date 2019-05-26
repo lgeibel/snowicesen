@@ -60,8 +60,54 @@ def plot_results(gdir):
     # Cut value > 1 to 1:
     rgb_image [rgb_image>1] = 1
 
-    plot_cloud_cover(gdir, sentinel_ekstrand_corrected, sentinel_cloud_masked)
-    plot_snow_cover_ASMAG(gdir, sentinel_temp, dem_ts, snow_xr, rgb_image)
+#    plot_cloud_cover(gdir, sentinel_ekstrand_corrected, sentinel_cloud_masked)
+    plot_snow_cover_all(gdir, sentinel_temp, dem_ts, snow_xr, rgb_image)
+#    plot_snow_cover_ASMAG(gdir, sentinel_temp, dem_ts, snow_xr, rgb_image)
+
+def plot_snow_cover_all(gdir, sentinel, dem_ts, snow_xr, rgb_image):
+    """Plot Snow Mask and SLA as retrieved with ASMAG-
+    Algorithm
+
+    Parameters:
+    -----------
+    gdir:     gdir: :py:class:`crampon.GlacierDirectory`
+        A GlacierDirectory instance.
+    sentinel_temp: Xarray Dataset: Sentinel Images after all
+        preprocessing steps
+    dem_ts: Xarray Dataset: Dem of scene in local grid
+    snow_xr: Xarray Dataset: Snow cover Maps and SLA of all algorithms
+
+    Returns:
+    -----------
+    None
+    """
+    # Read snow maps from snow_xr:
+    fig1 = plt.figure(figsize=(15, 10))
+    plt.subplot(1, 4, 1)
+    plt.imshow(rgb_image)
+    plt.title('RBG Image')
+
+    plt.subplot(1, 4, 2)
+    snow_xr.sel(time=cfg.PARAMS['date'][0], model='asmag').snow_map.plot()
+    plt.contour(dem_ts.isel(time=0,band=0).height_in_m.values, cmap='Greens',
+               levels=[snow_xr.sel(time=cfg.PARAMS['date'][0], model='asmag').SLA.values])
+    plt.title('Asmag Snow Map & SLA')
+    plt.subplot(1, 4, 3)
+    snow_xr.sel(time=cfg.PARAMS['date'][0], model='naegeli_orig').snow_map.plot()
+    plt.contour(dem_ts.isel(time=0,band=0).height_in_m.values, cmap='Greens',
+               levels=[snow_xr.sel(time=cfg.PARAMS['date'][0], model='naegeli_orig').SLA.values])
+    plt.title('Naegeli Orig')
+    plt.subplot(1, 4, 4)
+    snow_xr.sel(time=cfg.PARAMS['date'][0], model='naegeli_improv').snow_map.plot()
+    plt.contour(dem_ts.isel(time=0,band=0).height_in_m.values, cmap='Greens',
+               levels=[snow_xr.sel(time=cfg.PARAMS['date'][0], model='naegeli_improv').SLA.values])
+    plt.title('Naegeli Improved Method')
+    plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
+    plt.show(fig1)
+    plt.savefig(gdir.get_filepath('plt_all'), bbox_inches='tight')
+
+
+
 
 def plot_cloud_cover(gdir, ekstrand_corrected, cloud_masked):
     """

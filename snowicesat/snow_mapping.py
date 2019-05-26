@@ -47,7 +47,7 @@ def asmag_snow_mapping(gdir):
     None
     """
     try:
-        sentinel = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
+        sentinel = xr.open_dataset(gdir.get_filepath('sentinel_temp'))    
     except FileNotFoundError:
         return
 
@@ -69,6 +69,7 @@ def asmag_snow_mapping(gdir):
         bins_center = 0
         hist = 0
         # no pixels are snow covered
+    print("Threshold =", val)
 
     snow = nir > val
     snow = snow * 1
@@ -96,23 +97,43 @@ def asmag_snow_mapping(gdir):
         snow_xr['SLA'] = (['model', 'time'], np.zeros((3, 1), dtype=np.uint16))
 
     else:
+        # nc. already exists, create new xarray Dataset and concat
+        # to obtain new time dimension
         snow_xr = xr.open_dataset(gdir.get_filepath('snow_cover'))
+        snow_new_ds = snow_xr.copy()
+        snow_new_ds = snow_new_ds.isel(time=0)
+        snow_new_ds.coords['time'] = np.array([cfg.PARAMS['date'][0]])
+        snow_xr = xr.concat([snow_xr, snow_new_ds], dim='time')
 
-    #write variables into dataset:
-    snow_xr['snow_map'].loc[dict(model='asmag', time=cfg.PARAMS['date'][0])] = snow
+    print("We are here 1")
+    snow_xr['snow_map'].loc[dict(model='asmag', time = cfg.PARAMS['date'][0])] = snow
     snow_xr['SLA'].loc[dict(model='asmag', time=cfg.PARAMS['date'][0])] = SLA
-    snow_new = snow_xr
-    try:
-        # safe dataset to file
-        snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
-    except PermissionError:
-        snow_xr.close()
-        # remove old file:
+
+    snow_xr['snow_map'].loc[dict(model='naegeli_orig', time = cfg.PARAMS['date'][0])] = \
+                np.zeros([snow.shape[0], snow.shape[1]])
+    snow_xr['SLA'].loc[dict(model = 'naegeli_orig', time=cfg.PARAMS['date'][0])]= 0
+    snow_xr['snow_map'].loc[dict(model='naegeli_improv',time=cfg.PARAMS['date'][0])] = \
+                np.zeros([snow.shape[0], snow.shape[1]])
+    snow_xr['SLA'].loc[dict(model='naegeli_improv', time = cfg.PARAMS['date'][0])]= 0
+
+    print(snow_xr)
+    
+
+    snow_new = snow_xr.copy()
+    #try:
+    #    # safe dataset to file
+    #    snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
+    #except PermissionError:
+    snow_xr.close()
+    # remove old file:
+    if os.path.isfile(gdir.get_filepath('snow_cover')):
         os.remove(gdir.get_filepath('snow_cover'))
-        snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
+    snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
 
     sentinel.close()
     snow_new.close()
+
+    print("SLA = ", SLA)
 
 def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
     """Snow line altitude retrieval as described in the
@@ -163,7 +184,7 @@ def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
                                                                 snow.shape[0]), :]], axis=0)
                 if elevation_grid.shape[1] < snow.shape[1]:  # append column
                     b = elevation_grid[:, (elevation_grid.shape[1] -
-                                           snow.shape[1])].reshape(elevation_grid.shape[0], 1)
+                        snow.shape[1]):elevation_grid.shape[1]]
                     elevation_grid = np.hstack((elevation_grid, b))
                     # Expand grid on boundaries to obtain raster in same shape after
 
@@ -186,7 +207,7 @@ def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
         while num < len(cover):
             # check if there are 5 continuous bands with snow cover > 50%
             if all(bins > 0.5 for bins in cover[num:(num + bands)]):
-                # select lowest band as
+                # select lowest band as SLA
                 SLA = range(int(elevation_grid[elevation_grid > 0].min()),
                             int(elevation_grid.max()), 20)[num]
                 break  # stop loop
@@ -194,10 +215,13 @@ def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
                 # if end of glacier is reached and no SLA found:
                 bands = bands - 1
                 # start search again
-                num = 0
+                num = -1
+            if len(cover)<=bands:
+                bands = bands-1
+                num = -1
             num += 1
     else:
-        return
+        SLA = elevation_grid.max()
     dem_ts.close()
     return SLA
 
@@ -275,23 +299,23 @@ def naegeli_snow_mapping(gdir):
             SLA = elevation_grid[elevation_grid > 0].min()
         elif snow[snow == 1].size / snow.size < 0.1:  # low/no snow cover:
             SLA = elevation_grid.max()
-    plt.subplot(2, 2, 4)
-    plt.imshow(albedo_ind)
-    plt.imshow(snow * 1, cmap="Blues_r")
-    plt.contour(elevation_grid, cmap="hot",
-                levels=list(
-                    range(int(elevation_grid[elevation_grid > 0].min()),
-                        int(elevation_grid.max()),
-                        int((elevation_grid.max() -
-                             elevation_grid[elevation_grid > 0].min()) / 10)
-                         )))
-    plt.colorbar()
-    plt.contour(elevation_grid, cmap='Greens',
-                levels=[SLA - r_crit, SLA, SLA + r_crit])
-    plt.title("Final snow mask Orig.")
-    plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
-#    plt.show()
-    plt.savefig(gdir.get_filepath('plt_naegeli'), bbox_inches='tight')
+    #plt.subplot(2, 2, 4)
+    #plt.imshow(albedo_ind)
+    #plt.imshow(snow * 1, cmap="Blues_r")
+    #plt.contour(elevation_grid, cmap="hot",
+    #            levels=list(
+    #                range(int(elevation_grid[elevation_grid > 0].min()),
+    #                    int(elevation_grid.max()),
+    #                    int((elevation_grid.max() -
+    #                         elevation_grid[elevation_grid > 0].min()) / 10)
+    #                     )))
+    #plt.colorbar()
+    #plt.contour(elevation_grid, cmap='Greens',
+    #            levels=[SLA - r_crit, SLA, SLA + r_crit])
+    #plt.title("Final snow mask Orig.")
+    #plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
+    #plt.show()
+   # plt.savefig(gdir.get_filepath('plt_naegeli'), bbox_inches='tight')
 
     # Write pixel that are 0 in sentinel bands as nodata value
     # so they dont get confused with ice area
@@ -299,6 +323,7 @@ def naegeli_snow_mapping(gdir):
 
     # Save snow cover map to .nc file:
     snow_xr = xr.open_dataset(gdir.get_filepath('snow_cover'))
+
     # calculate SLA from snow cover map:
     SLA_new = get_SLA_asmag(gdir, snow)
     if SLA_new is None:
@@ -310,15 +335,12 @@ def naegeli_snow_mapping(gdir):
     snow_xr['SLA'].loc[dict(model='naegeli_orig', time=cfg.PARAMS['date'][0])] = SLA
     # safe to file
     snow_new = snow_xr
-    try:
-        # safe dataset to file
-        snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
-    except PermissionError:
-        snow_xr.close()
+    snow_xr.close()
         # remove old file:
-        os.remove(gdir.get_filepath('snow_cover'))
-        snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
+    os.remove(gdir.get_filepath('snow_cover'))
+    snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
     snow_new.close()
+    print("SLA = ", SLA)
 
 
 
@@ -393,7 +415,7 @@ def naegeli_improved_snow_mapping(gdir):
          # does a step function model fit the elevation-albedo-profile?
          # Maximum for r_crit: maximum of elevation distance between SLA
          # and either lowest or highest snow-covered pixel
-        if snow[snow * 1 == 1].size > 0:
+        if snow[snow * 1 == 1].size > 1:
             r_crit_max = max(SLA - elevation_grid[snow * 1 == 1][
                 elevation_grid[snow * 1 == 1] > 0].min(),
                              elevation_grid[snow * 1 == 1].max() - SLA)
@@ -429,23 +451,23 @@ def naegeli_improved_snow_mapping(gdir):
     # so they dont get confused with ice area
     snow[albedo_ind == 0] = -999
 
-    plt.subplot(2, 2, 4)
-    plt.imshow(albedo_ind)
-    plt.imshow(snow * 1, cmap="Blues_r")
-    plt.contour(elevation_grid, cmap="hot",
-                levels=list(
-                   range(int(elevation_grid[elevation_grid > 0].min()),
-                         int(elevation_grid.max()),
-                         int((elevation_grid.max() -
-                              elevation_grid[elevation_grid > 0].min()) / 10)
-                          )))
-    plt.colorbar()
-    plt.contour(elevation_grid, cmap='Greens',
-                levels=[SLA - r_crit, SLA, SLA + r_crit])
-    plt.title("Final snow mask")
-    plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
-#    plt.show()
-    plt.savefig(gdir.get_filepath('plt_impr_naegeli'), bbox_inches='tight')
+    #plt.subplot(2, 2, 4)
+    #plt.imshow(albedo_ind)
+    #plt.imshow(snow * 1, cmap="Blues_r")
+    #plt.contour(elevation_grid, cmap="hot",
+    #            levels=list(
+    #               range(int(elevation_grid[elevation_grid > 0].min()),
+    #                     int(elevation_grid.max()),
+    #                     int((elevation_grid.max() -
+    #                          elevation_grid[elevation_grid > 0].min()) / 10)
+    #                      )))
+    #plt.colorbar()
+    #plt.contour(elevation_grid, cmap='Greens',
+    #            levels=[SLA - r_crit, SLA, SLA + r_crit])
+    #plt.title("Final snow mask")
+    #plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
+#   # plt.show()
+    #plt.savefig(gdir.get_filepath('plt_impr_naegeli'), bbox_inches='tight')
 
 
   # Save snow cover map to .nc file:
@@ -461,14 +483,11 @@ def naegeli_improved_snow_mapping(gdir):
     snow_xr['SLA'].loc[dict(model='naegeli_improv', time=cfg.PARAMS['date'][0])] = SLA
     # safe to file
     snow_new = snow_xr
-    try:
-        # safe dataset to file
-        snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
-    except PermissionError:
-        snow_xr.close()
+    snow_xr.close()
         # remove old file:
-        os.remove(gdir.get_filepath('snow_cover'))
-        snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
+    os.remove(gdir.get_filepath('snow_cover'))
+    snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
+    print("SLA =", SLA)
 
     snow_new.close()
     snow_xr.close()
@@ -512,7 +531,9 @@ def max_albedo_slope_iterate(df):
     delta_h = int(round((dem_max - dem_min) / 2))
     for i in range(0, int(np.log(df.dem_amb.size))):
         delta_h = int(round((dem_max - dem_min) / (2 ** (i + 1))))
-        if delta_h > 20 and i > 0:  # only look at height bands with h > 20 Meters
+        if (delta_h > 20) or (delta_h <=20 and i <2) : 
+            # only look at height bands with h > 20 Meters for glaciers bigger
+            # than 2* 20 meter
             dem_avg = range(dem_min, dem_max, delta_h)
             albedo_avg = []
             # Sort array into height bands:
@@ -563,23 +584,24 @@ def max_albedo_slope_iterate(df):
                 alb_max_slope = (albedo_avg[max_loc])
                 height_max_slope = (dem_avg[max_loc])
 
-    plt.subplot(2, 2, 3)
-    try:
-        plt.plot(dem_avg, albedo_avg)
-    except UnboundLocalError:
-        # Glacier smaller than 25 meters
-        if delta_h == 0:
-            delta_h = 1
-        dem_avg = range(dem_min, dem_max, delta_h)
-        albedo_avg = range(dem_min, dem_max, delta_h)
-        # Take middle as a first guess:
-        alb_max_slope = (alb_max - alb_min) / 2
-        height_max_slope = (dem_max - dem_min) / 2
-        plt.plot(dem_avg, albedo_avg)
 
-    plt.axvline(height_max_slope, color='k', ls='--')
-    plt.xlabel("Altitude in m")
-    plt.ylabel("Albedo")
+    #plt.subplot(2, 2, 3)
+    #try:
+    #    plt.plot(dem_avg, albedo_avg)
+    #except UnboundLocalError:
+    #    # Glacier smaller than 25 meters
+    #    if delta_h == 0:
+    #        delta_h = 1
+    #    dem_avg = range(dem_min, dem_max, delta_h)
+    #    albedo_avg = range(dem_min, dem_max, delta_h)
+    #    # Take middle as a first guess:
+    #    alb_max_slope = (alb_max - alb_min) / 2
+    #    height_max_slope = (dem_max - dem_min) / 2
+    #    plt.plot(dem_avg, albedo_avg)
+
+    #plt.axvline(height_max_slope, color='k', ls='--')
+   # plt.xlabel("Altitude in m")
+   # plt.ylabel("Albedo")
 
     # Fitting Step function to Determine fit with R^2:
     # curve fitting: bounds for inital model:
@@ -666,23 +688,23 @@ def max_albedo_slope_orig(df):
             alb_max_slope = df.albedo_amb.max()
             height_max_slope = df.dem_amb.max()
 
-    plt.subplot(2, 2, 3)
-    try:
-        plt.plot(dem_avg, albedo_avg)
-    except UnboundLocalError:
-        # Glacier smaller than 25 meters
-        if delta_h == 0:
-            delta_h = 1
-        dem_avg = range(dem_min, dem_max, delta_h)
-        albedo_avg = range(dem_min, dem_max, delta_h)
-        # Take middle as a first guess:
-        alb_max_slope = (alb_max - alb_min) / 2
-        height_max_slope = (dem_max - dem_min) / 2
-        plt.plot(dem_avg, albedo_avg)
-
-    plt.axvline(height_max_slope, color='k', ls='--')
-    plt.xlabel("Altitude in m")
-    plt.ylabel("Albedo")
+    #plt.subplot(2, 2, 3)
+    #try:
+    #    plt.plot(dem_avg, albedo_avg)
+    #except UnboundLocalError:
+    #    # Glacier smaller than 25 meters
+    #    if delta_h == 0:
+    #        delta_h = 1
+    #    dem_avg = range(dem_min, dem_max, delta_h)
+    #    albedo_avg = range(dem_min, dem_max, delta_h)
+    #    # Take middle as a first guess:
+    #    alb_max_slope = (alb_max - alb_min) / 2
+    #    height_max_slope = (dem_max - dem_min) / 2
+    #    plt.plot(dem_avg, albedo_avg)
+    #plt.axvline(height_max_slope, color='k', ls='--')
+    #plt.xlabel("Altitude in m")
+    #plt.ylabel("Albedo")
+    #plt.show()
 
     return alb_max_slope, height_max_slope
 
@@ -789,16 +811,21 @@ def primary_surface_type_evaluation(gdir):
     albedo_k[albedo_k > 1] = 1
     albedo = [albedo_k]
 
-    plt.figure(figsize=(15, 10))
-    plt.subplot(2, 2, 1)
-    b04 = sentinel.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-    b03 = sentinel.sel(band='B03', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-    b02 = sentinel.sel(band='B02', time=cfg.PARAMS['date'][0]).img_values.values / 10000
+   # plt.figure(figsize=(15, 10))
+   # plt.subplot(2, 2, 1)
+    
+   # sentinel = xr.open_dataset(gdir.get_filepath('sentinel')) 
 
-    rgb_image = np.array([b04, b03, b02]).transpose((1, 2, 0))
-    plt.imshow(albedo_k, cmap='gray')
-    plt.imshow(rgb_image)
-    plt.title("RGB Image")
+   # b04 = sentinel.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values / 10000
+   # b03 = sentinel.sel(band='B03', time=cfg.PARAMS['date'][0]).img_values.values / 10000
+   # b02 = sentinel.sel(band='B02', time=cfg.PARAMS['date'][0]).img_values.values / 10000
+
+   # print('B04 = ', b04)
+
+   # rgb_image = np.array([b04, b03, b02]).transpose((1, 2, 0))
+   # plt.imshow(albedo_k, cmap='gray')
+   # plt.imshow(rgb_image)
+   # plt.title("RGB Image")
 
     # Peform primary suface type evaluation: albedo > 0.55 = snow,
     # albedo < 0.25 = ice, 0.25 < albedo < 0.55 = ambiguous range,
@@ -815,26 +842,30 @@ def primary_surface_type_evaluation(gdir):
                                              albedo_ind.shape[0]), :]], axis=0)
             if elevation_grid.shape[1] < albedo_ind.shape[1]:  # append column
                 b = elevation_grid[:, (elevation_grid.shape[1] -
-                                       albedo_ind.shape[1])]. \
-                    reshape(elevation_grid.shape[0], 1)
+                                       albedo_ind.shape[1]):elevation_grid.shape[1]]
                 elevation_grid = np.hstack((elevation_grid, b))
                 # Expand grid on boundaries to obtain raster in same shape
+        #plt.imshow(elevation_grid)
+        #plt.imshow(albedo_ind, cmap = "gray", alpha = 0.5)
+        
+        #plt.show()
 
         snow = albedo_ind > 0.55
         ambig = (albedo_ind < 0.55) & (albedo_ind > 0.2)
 
-        plt.subplot(2, 2, 2)
-        plt.imshow(albedo_ind)
-        plt.imshow(snow * 2 + 1 * ambig, cmap="Blues_r")
-        plt.contour(elevation_grid, cmap="hot",
-                    levels=list(
-                        range(int(elevation_grid[elevation_grid > 0].min()),
-                              int(elevation_grid.max()),
-                              int((elevation_grid.max() -
-                                   elevation_grid[elevation_grid > 0].min()) / 10)
-                              )))
-        plt.colorbar()
-        plt.title("Snow and Ambig. Area")
+       # plt.subplot(2, 2, 2)
+       # plt.imshow(albedo_ind)
+       # plt.imshow(snow * 2 + 1 * ambig, cmap="Blues_r")
+       # plt.contour(elevation_grid, cmap="hot",
+       #             levels=list(
+       #                 range(int(elevation_grid[elevation_grid > 0].min()),
+       #                       int(elevation_grid.max()),
+       #                       int((elevation_grid.max() -
+       #                            elevation_grid[elevation_grid > 0].min()) / 10)
+       #                       )))
+       # plt.colorbar()
+       # plt.title("Snow and Ambig. Area")
+       # plt.show()
 
         sentinel.close()
         dem_ts.close()
