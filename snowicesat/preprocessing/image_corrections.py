@@ -149,8 +149,11 @@ def calc_slope_aspect_hillshade(gdir):
     except FileNotFoundError:
         # Glacier not located in tile
         return
+    except KeyError:
+        # No information for this datw & glacier
+        return
 
-    if solar_zenith.shape != elevation_grid.shape:
+    while solar_zenith.shape != elevation_grid.shape:
         print(solar_zenith.shape, elevation_grid.shape)
         if elevation_grid.shape[0] > solar_zenith.shape[0] or \
                 elevation_grid.shape[1] > solar_zenith.shape[1]: # Shorten elevation grid
@@ -216,12 +219,18 @@ def cloud_masking(gdir):
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('ekstrand'))
     except FileNotFoundError:
+        # 1st time step: no data for this glacier available
         return
 
-    wms_bands = sentinel.sel(
+    try:
+        wms_bands = sentinel.sel(
         band=['B01', 'B02', 'B04', 'B05', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'],
         time=cfg.PARAMS['date'][0])\
         .img_values.values
+    except KeyError:
+        # No data for this glacier & date
+        return
+
     # rearrange dimensions, goal :[height, width, channels].
     #  now: [channels, height, width] and correct into to float (factor 10000)
     wms_bands = [np.transpose(wms_bands/10000, (1,2,0)) for _ in range(1)]
@@ -296,10 +305,14 @@ def remove_sides(gdir):
         return
     band_array = {}
     for band_id in sentinel['band'].values: # Read all bands as np arrays
-        band_array[band_id] = sentinel.sel(
+        try:
+            band_array[band_id] = sentinel.sel(
             band=band_id,
             time=cfg.PARAMS['date'][0]) \
             .img_values.values/10000
+        except KeyError:
+            # no data for this date & glacier
+            return
 
     # Calculate NDSI - normalized differencial snow index
     NDSI = (band_array['B03']-band_array['B11'])/\

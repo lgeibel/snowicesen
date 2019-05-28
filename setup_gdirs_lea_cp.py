@@ -15,7 +15,7 @@ logging.basicConfig(format='%(asctime)s: %(name)s: %(message)s', datefmt='%Y-%m-
 log = logging.getLogger(__name__)
 log.setLevel('DEBUG')
 
-cfg.initialize("/scratch_net/vierzack03_second/geibell/snowicesat/snowicesat_params.cfg")
+cfg.initialize("/scratch_net/vierzack03_third/geibell/snowicesat/snowicesat_params.cfg")
 # Caution: In crampon.utils.GlacierDirectory._init cfg.initialize is called again --> change path there as well!
 
 
@@ -26,14 +26,14 @@ cfg.PARAMS['use_multiprocessing'] = False
 cfg.PARAMS['mp_processes'] = 4
 
 if __name__ == '__main__':
-    rgidf = gpd.read_file("/scratch_net/vierzack03_second/geibell/snowicesat/data/outlines/rgi_copy_status.shp")
+    rgidf = gpd.read_file("/scratch_net/vierzack03_third/geibell/snowicesat/data/outlines/rgi_copy_status.shp")
     # Ignore all values glaciers smaller than 0.1 km^2
     rgidf = rgidf.loc[rgidf['Area'] > 0.1]
 #    rgidf = rgidf.sample(n=5)
 
     # Only keep those glaciers to have smaller dataset
 #    rgidf = rgidf[rgidf.RGIId.isin([
-#        'RGI50-11.A54I07'])]
+#        'RGI50-11.A51C05'])]
 #        'RGI50-11.A54L36n', # Fiescher (Shaded)
 #        'RGI50-11.B4312n-1',  # Rhone
 #        'RGI50-11.B5616n-1',  # Findelen
@@ -60,8 +60,8 @@ if __name__ == '__main__':
         print("Date = ", cfg.PARAMS['date'][0])
        # Download data for given glaciers for this date
         tiles_downloaded = download_all_tiles(rgidf,
-                                              clear_cache=False
-                                              clear_safe=False)  # Function in utils
+                                              clear_cache = False,
+                                              clear_safe= False)  # Function in utils
         # move one day ahead
         start_date_var = start_date_var+timedelta(days=1)
         end_date_var = start_date_var+timedelta(days=1)

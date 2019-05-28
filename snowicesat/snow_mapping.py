@@ -69,7 +69,6 @@ def asmag_snow_mapping(gdir):
         bins_center = 0
         hist = 0
         # no pixels are snow covered
-    print("Threshold =", val)
 
     snow = nir > val
     snow = snow * 1
@@ -88,6 +87,12 @@ def asmag_snow_mapping(gdir):
         # create new dataset:
         snow_xr = sentinel.drop([band_id for band_id in sentinel['band'].values][:-1],
                                 dim='band').squeeze('band', drop=True)
+            # When no snow_cover.nc but sentinel.nc file 
+            # has been created for previous time steps:
+        snow_xr = snow_xr.drop([time_id for time_id in sentinel['time'].values][:-1],
+                                dim='time').squeeze('time', drop= True)
+        snow_xr = snow_xr.assign_coords(time = cfg.PARAMS['date'][0])
+        snow_xr = snow_xr.expand_dims('time')
         snow_xr = snow_xr.drop(['img_values'])
         # add dimension: "Model" with entries: asmag, naegeli_orig, naegeli_improv
         snow_xr['model'] = ('model', ['asmag', 'naegeli_orig', 'naegeli_improv'])
@@ -95,6 +100,7 @@ def asmag_snow_mapping(gdir):
                                  np.zeros((3,1,snow.shape[0], snow.shape[1]), dtype=np.uint16))
         # new variables "snow_map" and "SLA" (snow line altitude)
         snow_xr['SLA'] = (['model', 'time'], np.zeros((3, 1), dtype=np.uint16))
+
 
     else:
         # nc. already exists, create new xarray Dataset and concat
@@ -105,7 +111,6 @@ def asmag_snow_mapping(gdir):
         snow_new_ds.coords['time'] = np.array([cfg.PARAMS['date'][0]])
         snow_xr = xr.concat([snow_xr, snow_new_ds], dim='time')
 
-    print("We are here 1")
     snow_xr['snow_map'].loc[dict(model='asmag', time = cfg.PARAMS['date'][0])] = snow
     snow_xr['SLA'].loc[dict(model='asmag', time=cfg.PARAMS['date'][0])] = SLA
 
@@ -115,9 +120,7 @@ def asmag_snow_mapping(gdir):
     snow_xr['snow_map'].loc[dict(model='naegeli_improv',time=cfg.PARAMS['date'][0])] = \
                 np.zeros([snow.shape[0], snow.shape[1]])
     snow_xr['SLA'].loc[dict(model='naegeli_improv', time = cfg.PARAMS['date'][0])]= 0
-
-    print(snow_xr)
-    
+   
 
     snow_new = snow_xr.copy()
     #try:
@@ -174,7 +177,7 @@ def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
                                        int(elevation_grid.max()), 20)):
         if num > 0:
             # starting at second iteration:
-            if snow.shape != elevation_grid.shape:
+            while snow.shape != elevation_grid.shape:
                 if elevation_grid.shape[0] > snow.shape[0] or \
                         elevation_grid.shape[1] > snow.shape[1]:  # Shorten elevation grid
                     elevation_grid = elevation_grid[0:snow.shape[0], 0:snow.shape[1]]
@@ -190,8 +193,11 @@ def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
 
             # find all pixels with same elevation between "height" and "height-20":
             while band_height > 0:
-                snow_band = snow[(elevation_grid > (height - band_height))
+                try:
+                    snow_band = snow[(elevation_grid > (height - band_height))
                                  & (elevation_grid < height)]
+                except IndexError:
+                    print(elevation_grid.shape, snow.shape)
                 if snow_band.size == 0:
                     band_height -= 1
                 else:
@@ -390,7 +396,7 @@ def naegeli_improved_snow_mapping(gdir):
     # (assumed to be snow line altitude)
 
         # Albedo slope: get DEM and albedo of ambigous range, transform into vector
-    if ambig.any():  # only use if ambigious area contains any True values
+    if ambig[ambig==1].size > 3:  # only use if ambigious area is bigger than 3 pixels:
         dem_amb = elevation_grid[ambig]
         albedo_amb = albedo_ind[ambig]
          # Write dem and albedo into pandas DataFrame:
@@ -531,7 +537,7 @@ def max_albedo_slope_iterate(df):
     delta_h = int(round((dem_max - dem_min) / 2))
     for i in range(0, int(np.log(df.dem_amb.size))):
         delta_h = int(round((dem_max - dem_min) / (2 ** (i + 1))))
-        if (delta_h > 20) or (delta_h <=20 and i <2) : 
+        if (delta_h > 20) or (delta_h <=20 and i <3) : 
             # only look at height bands with h > 20 Meters for glaciers bigger
             # than 2* 20 meter
             dem_avg = range(dem_min, dem_max, delta_h)
@@ -566,7 +572,7 @@ def max_albedo_slope_iterate(df):
                 if max_loc > 0:
                     max_loc_sub = np.argmax((np.gradient
                                              (albedo_avg
-                                              [(2 * max_loc - 2):(2 * max_loc + 2)])))
+                                                   [(2 * max_loc - 2):(2 * max_loc + 2)])))
                     max_loc = 2 * max_loc - 2 + max_loc_sub
                     # new location of maximum albedo slope
                 else:
