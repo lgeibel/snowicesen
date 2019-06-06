@@ -25,9 +25,15 @@ def init_glacier_regions_snowicesat(shapedf=None, reset=False, force=False, all_
     """
     Set up or take over GlacierDirectories. The first task (always!).
 
-    The function is copied from OGGM, just some names have been changed.
-    Sooner or later maybe also 'dem.tif' and 'dem' should be replaced by the
-    multitemporal equivalents.
+    The main  function is copied from Crampon that copied it froom OGGM,
+    but it has been simplified so that it only uses one input 
+    (currently SwissALti3d) for the DEM input and only calculates 
+    the necessary parts of it.
+    It also uses the define_glacier_regions_snowicesat entity task.
+
+    For a more verstatile use, the Crampon or OGGM function
+    init_glacier_regions and define_glacier_regions 
+    might has to be employed.
 
     Set reset=True in order to delete the content of the directories.
 

@@ -35,9 +35,14 @@ def plot_results(gdir):
     - Snow Maps Naegeli
     - Snow Maps Naegeli_Improved
 
-    :param  gdirs: :py:class:`crampon.GlacierDirectory`
+    Parameters:
+    ----------
+    gdirs: :py:class
+        `crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    :return: None
+    Returns:
+    --------
+    None
     """
     # Open Sentinel File to get Background Image:
 
@@ -49,33 +54,46 @@ def plot_results(gdir):
         dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
         snow_xr = xr.open_dataset(gdir.get_filepath('snow_cover'))
     except FileNotFoundError:
+        log.error("One of the files necessary for plotting is not found")
         return
 
+    for date in snow_xr.time:
+        print(date.values)
+        #### TODO: ------ USE SENTINEL_TMP and snow_xr for loop!!!!! ------
+        b04 = sentinel_ekstrand_corrected.sel(band='B04', time=date).img_values.values / 10000
+        b03 = sentinel_ekstrand_corrected.sel(band='B03', time=date).img_values.values / 10000
+        b02 = sentinel_ekstrand_corrected.sel(band='B02', time=date).img_values.values / 10000
 
-    b04 = sentinel_temp.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-    b03 = sentinel_temp.sel(band='B03', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-    b02 = sentinel_temp.sel(band='B02', time=cfg.PARAMS['date'][0]).img_values.values / 10000
-
-    rgb_image = np.array([b04, b03, b02]).transpose((1, 2, 0))
+        rgb_image = np.array([b04, b03, b02]).transpose((1, 2, 0))
     # Cut value > 1 to 1:
-    rgb_image [rgb_image>1] = 1
+        rgb_image [rgb_image>1] = 1
+    #    plt.imshow(rgb_image)
+    #    plt.title(date)
+    #    plt.show()
 
-#    plot_cloud_cover(gdir, sentinel_ekstrand_corrected, sentinel_cloud_masked)
-    plot_snow_cover_all(gdir, sentinel_temp, dem_ts, snow_xr, rgb_image)
-#    plot_snow_cover_ASMAG(gdir, sentinel_temp, dem_ts, snow_xr, rgb_image)
+#        plot_cloud_cover(gdir, sentinel_ekstrand_corrected, sentinel_cloud_masked, date)
+        plot_snow_cover_all(gdir, sentinel_temp, dem_ts, snow_xr, rgb_image, date)
+#    plot_snow_cover_ASMAG(gdir, sentinel, dem_ts, snow_xr, rgb_image)
 
-def plot_snow_cover_all(gdir, sentinel, dem_ts, snow_xr, rgb_image):
+def plot_snow_cover_all(gdir, sentinel, dem_ts, snow_xr, rgb_image, date):
     """Plot Snow Mask and SLA as retrieved with ASMAG-
     Algorithm
 
     Parameters:
     -----------
-    gdir:     gdir: :py:class:`crampon.GlacierDirectory`
+    gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    sentinel_temp: Xarray Dataset: Sentinel Images after all
+    sentinel_temp: Xarray Dataset
+        Sentinel Images after all
         preprocessing steps
-    dem_ts: Xarray Dataset: Dem of scene in local grid
-    snow_xr: Xarray Dataset: Snow cover Maps and SLA of all algorithms
+    dem_ts: Xarray Dataset
+        Dem of scene in local grid
+    snow_xr:  Xarray Dataset
+        Snow cover Maps and SLA of all algorithms
+    rgb_image: np.array
+        RGB Image of tile as 3- Band np.parray
+    date: int
+        Current date for plotting
 
     Returns:
     -----------
@@ -88,19 +106,19 @@ def plot_snow_cover_all(gdir, sentinel, dem_ts, snow_xr, rgb_image):
     plt.title('RBG Image')
 
     plt.subplot(1, 4, 2)
-    snow_xr.sel(time=cfg.PARAMS['date'][0], model='asmag').snow_map.plot()
-    plt.contour(dem_ts.isel(time=0,band=0).height_in_m.values, cmap='Greens',
-               levels=[snow_xr.sel(time=cfg.PARAMS['date'][0], model='asmag').SLA.values])
+    snow_xr.sel(time=date, model='asmag').snow_map.plot()
+    plt.contour(dem_ts.isel(time=0,band=0 ).height_in_m.values, cmap='Greens')
+            #   levels=[snow_xr.sel(time=date, model='asmag').SLA.values])
     plt.title('Asmag Snow Map & SLA')
     plt.subplot(1, 4, 3)
-    snow_xr.sel(time=cfg.PARAMS['date'][0], model='naegeli_orig').snow_map.plot()
-    plt.contour(dem_ts.isel(time=0,band=0).height_in_m.values, cmap='Greens',
-               levels=[snow_xr.sel(time=cfg.PARAMS['date'][0], model='naegeli_orig').SLA.values])
-    plt.title('Naegeli Orig')
+    snow_xr.sel(time=date, model='naegeli_orig').snow_map.plot()
+    plt.contour(dem_ts.isel(time=0,band=0).height_in_m.values, cmap='Greens')
+            #   levels=[snow_xr.sel(time=date, model='naegeli_orig').SLA.values])
+    plt.title('Naegeli Improv')
     plt.subplot(1, 4, 4)
-    snow_xr.sel(time=cfg.PARAMS['date'][0], model='naegeli_improv').snow_map.plot()
-    plt.contour(dem_ts.isel(time=0,band=0).height_in_m.values, cmap='Greens',
-               levels=[snow_xr.sel(time=cfg.PARAMS['date'][0], model='naegeli_improv').SLA.values])
+    snow_xr.sel(time=date, model='naegeli_improv').snow_map.plot()
+    plt.contour(dem_ts.isel(time=0,band=0 ).height_in_m.values, cmap='Greens')
+             #  levels=[snow_xr.sel(time=date, model='naegeli_improv').SLA.values])
     plt.title('Naegeli Improved Method')
     plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
     plt.show(fig1)
@@ -113,14 +131,21 @@ def plot_cloud_cover(gdir, ekstrand_corrected, cloud_masked):
     """
     Plot Thermal Band 12 and Cloud Mask retrieved by the s2cloudless
     algorithm on top of the thermal band
+
     Parameters:
     -----------
     gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    ekstrand_corrected: Xarray DataSet: ekstrand corrected scene
-                for all bands & dates for this glacier
-    cloud_masked: Xarray DataSet: cloud cover masked scene for all bands
-            & dates for this glacier
+    ekstrand_corrected: Xarray DataSet
+        ekstrand corrected scene
+        for all bands & dates for this glacier
+    cloud_masked: Xarray DataSet
+        cloud cover masked scene for all bands
+        & dates for this glacier
+
+    Returns:
+    -------
+    None
     """
     # Cloud Mask = Ekstrand_correcte array - Cloud_masked array
     cloud_mask = \
@@ -154,12 +179,15 @@ def plot_snow_cover_ASMAG(gdir, sentinel, dem_ts, snow_xr, rgb_image):
 
     Parameters:
     -----------
-    gdir:     gdir: :py:class:`crampon.GlacierDirectory`
+    gdir:   gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    sentinel_temp: Xarray Dataset: Sentinel Images after all
+    sentinel_temp: Xarray Dataset
+        Sentinel Images after all
         preprocessing steps
-    dem_ts: Xarray Dataset: Dem of scene in local grid
-    snow_xr: Xarray Dataset: Snow cover Maps and SLA of all algorithms
+    dem_ts: Xarray Dataset
+        Dem of scene in local grid
+    snow_xr: Xarray Dataset
+        Snow cover Maps and SLA of all algorithms
 
     Returns:
     -----------
@@ -209,7 +237,7 @@ def plot_snow_cover_ASMAG(gdir, sentinel, dem_ts, snow_xr, rgb_image):
 
 def plot_snow_cover_naegeli(gdir, sentinel, dem_ts, snow_xr, rgb_image):
     """ Plot Snow cover mask as retrieved after
-    Method by Naegeli """
+    Method by Naegeli ------  NOT FINISEHD YET """
 
     plt.figure(figsize=(15, 10))
     plt.subplot(2, 2, 1)
@@ -245,7 +273,7 @@ def plot_snow_cover_naegeli(gdir, sentinel, dem_ts, snow_xr, rgb_image):
                 elevation_grid = np.hstack((elevation_grid, b))
                 # Expand grid on boundaries to obtain raster in same shape
 
-        snow = albedo_ind > 0.55
+        snow = albedo_ind > 0.5 
         ambig = (albedo_ind < 0.55) & (albedo_ind > 0.2)
 
         plt.subplot(2, 2, 2)

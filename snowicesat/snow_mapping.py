@@ -1,3 +1,21 @@
+""" Three snow and SLA mapping algorithms
+
+Three snow cover and snow line altitude mapping algorithms
+are implemented here (as entity tasks)
+  -  ASMAG Snow Mapping based on Otsu- Thresholding
+  - Snows mapping after Naegeli, 2019 
+  (see function description for full reference)
+  - A modified/ more flexible version of the algorithm by Naegeli, 2019
+
+So far it is implemented in a way that it needs to run all 3 methods in 
+the order shown above in order to create a proper output file.
+(Eventually a better way to create the snow_cover.nc file needs 
+to be implemented)
+
+The output is stored in snow_cover.nc with the 3 Models 
+as dimensions, a time dimension and the variables snow_map and SLA
+"""
+
 from __future__ import absolute_import, division
 
 import os
@@ -35,36 +53,45 @@ def asmag_snow_mapping(gdir):
     calculation of snow line altitudes from multi-
     temporal Landsat data" (in Review)
 
-    Stores snow cover map in Asmag dimension of
+    Stores snow cover map in "asmag" dimension of
     snow_cover.nc in variables snow_map and SLA
 
-    Parameters:
-    ---------
+    Parameters
+    ----------
     gdirs: :py:class:`crampon.GlacierDirectory`
        A GlacierDirectory instance.
-    Returns:
-    ---------
+    Returns
+    ------
     None
     """
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('sentinel_temp'))    
     except FileNotFoundError:
+        # no data for 1st day
+        log.error('No data for first day - Abort ASMAG_snow_mapping')
         return
 
     # get NIR band as np array
-    nir = sentinel.sel(band='B08', time=cfg.PARAMS['date'][0]).img_values.values / 10000
+    try:
+        nir = sentinel.sel(band='B08', time=cfg.PARAMS['date'][0]).img_values.values / 10000
+    except KeyError:
+        # no data fir this glacier & file
+        log.error('No data for this glacier and file- Abort ASMAG_snow_mapping')
+        return
     if nir[nir > 0].size > 0:
         try:
             val = filters.threshold_otsu(nir[nir > 0])
         except ValueError:
             # All pixels cloud-covered and not detected correctly
             # Manually set as no snow
+            log.error('Exceptional case: all pixel cloud-covered but not detected correctly')
             val = 1
             bins_center = 0
             hist = 0
 
         hist, bins_center = exposure.histogram(nir[nir > 0])
     else:
+        log.error('No pixels snow covered')
         val = 1
         bins_center = 0
         hist = 0
@@ -77,10 +104,6 @@ def asmag_snow_mapping(gdir):
     SLA = get_SLA_asmag(gdir, snow)
     if SLA is None:
         SLA = 0
-
-    # Write pixel that are 0 in sentinel bands as nodata value (-999)
-    # so they dont get confused with ice area
-    snow[sentinel.sel(band='B04', time=cfg.PARAMS['date'][0]).img_values.values == 0] = -999
 
     # write snow map to netcdf:
     if not os.path.exists(gdir.get_filepath('snow_cover')):
@@ -102,6 +125,7 @@ def asmag_snow_mapping(gdir):
         snow_xr['SLA'] = (['model', 'time'], np.zeros((3, 1), dtype=np.uint16))
 
 
+
     else:
         # nc. already exists, create new xarray Dataset and concat
         # to obtain new time dimension
@@ -110,10 +134,25 @@ def asmag_snow_mapping(gdir):
         snow_new_ds = snow_new_ds.isel(time=0)
         snow_new_ds.coords['time'] = np.array([cfg.PARAMS['date'][0]])
         snow_xr = xr.concat([snow_xr, snow_new_ds], dim='time')
+    try:
+        # Assign snow map to ASMAG model snow_map variable
+        snow_xr['snow_map'].loc[dict(model='asmag', time=cfg.PARAMS['date'][0])] = \
+                np.zeros([snow.shape[0], snow.shape[1]])
+                # weird bug, first need to assign zeros array...
+        snow_xr['snow_map'].loc[dict(model='asmag', time=cfg.PARAMS['date'][0])] = \
+                snow
 
-    snow_xr['snow_map'].loc[dict(model='asmag', time = cfg.PARAMS['date'][0])] = snow
+        # Assign NaN Value:
+        snow_xr = snow_xr.where(snow_xr['snow_map']!=0)
+    except ValueError:
+        # TODO: very strange bug on RGI50-11A14C03-1, after 3rd day:
+        # dimensions of "snow" and "sentinel" are different?
+        log.error('Bug (only known for GRI50-11.A14C03-1)- Abort Snow Mapping')
+        return
+    # Assign SLA:
     snow_xr['SLA'].loc[dict(model='asmag', time=cfg.PARAMS['date'][0])] = SLA
 
+    # Assign np.zeros for other two models (to make sure the dimensions are correct)
     snow_xr['snow_map'].loc[dict(model='naegeli_orig', time = cfg.PARAMS['date'][0])] = \
                 np.zeros([snow.shape[0], snow.shape[1]])
     snow_xr['SLA'].loc[dict(model = 'naegeli_orig', time=cfg.PARAMS['date'][0])]= 0
@@ -132,29 +171,35 @@ def asmag_snow_mapping(gdir):
     if os.path.isfile(gdir.get_filepath('snow_cover')):
         os.remove(gdir.get_filepath('snow_cover'))
     snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
+    log.info('Asmag snow map written for {}'.format(cfg.PARAMS['date'][0]))
 
     sentinel.close()
     snow_new.close()
-
-    print("SLA = ", SLA)
+    log.debug('SLA 1 = {}'.format(SLA))
+    print("SLA1 = ",SLA)
 
 def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
     """Snow line altitude retrieval as described in the
     ASMAG algorithm.
 
+    This function is used to calculate an estimate for 
+    the Snow Line Altitude (SLA) from a binary snow cover map.
+    It is used for the ASMAG-Algorithm and both versions of
+    the algorithm by Naegeli, 2019.
+
     Checks if 5 continuous 20m elevation bands have a snow
     cover higher than 50%.
-    If so, the lowest elevation value is used as SLA. If no 5 continuous
-    elevation bands satisfy this criteria, the search continues for 4,
-    then 3, etc.
+    If so, the lowest elevation value is used as SLA. If no 5
+    continuous elevation bands satisfy this criteria, the search
+    continues for 4, then 3, etc.
 
     If there is no 20m elevation band with over 50% snow cover, the
     functions returns "None"
 
-    Parameters:
+    Parameters
     ----------
     gdir: :py:class:`crampon.GlacierDirectory`
-                    A GlacierDirectory instance.
+            A GlacierDirectory instance.
     snow: np_array:
             binary snow cover map of area in
             GlacierDirectory
@@ -162,11 +207,14 @@ def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
             height of elevation band to look at for
             SLA determination in m
     bands: int: (optional, default = 5)
-            amount of continuous bands to start looking at to determine SLA
+            amount of continuous bands to start looking at to
+            determine SLA
 
 
-    Returns:
-         SLA in meters (None if no snow covered bands)
+    Returns
+    -------
+    SLA: float
+            SLA in meters (None if no snow covered bands)
     """
     # Get DEM:
     dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
@@ -175,16 +223,21 @@ def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
     cover = []
     for num, height in enumerate(range(int(elevation_grid[elevation_grid > 0].min()),
                                        int(elevation_grid.max()), 20)):
-        if num > 0:
+        if num > 0:                        
             # starting at second iteration:
             while snow.shape != elevation_grid.shape:
                 if elevation_grid.shape[0] > snow.shape[0] or \
                         elevation_grid.shape[1] > snow.shape[1]:  # Shorten elevation grid
                     elevation_grid = elevation_grid[0:snow.shape[0], 0:snow.shape[1]]
                 if elevation_grid.shape[0] < snow.shape[0]:  # Extend elevation grid: append row:
-                    elevation_grid = np.append(elevation_grid,
+                    try: 
+                        elevation_grid = np.append(elevation_grid,
                                                [elevation_grid[(elevation_grid.shape[0] -
                                                                 snow.shape[0]), :]], axis=0)
+                    except IndexError:
+                        # BUG: very exeptionally, the snow_map is broken --> 
+                        log.error('Snow map is broken - BUG!')
+                        return
                 if elevation_grid.shape[1] < snow.shape[1]:  # append column
                     b = elevation_grid[:, (elevation_grid.shape[1] -
                         snow.shape[1]):elevation_grid.shape[1]]
@@ -197,7 +250,7 @@ def get_SLA_asmag(gdir, snow, band_height = 20, bands = 5):
                     snow_band = snow[(elevation_grid > (height - band_height))
                                  & (elevation_grid < height)]
                 except IndexError:
-                    print(elevation_grid.shape, snow.shape)
+                    log.error(' Index Error:', elevation_grid.shape, snow.shape)
                 if snow_band.size == 0:
                     band_height -= 1
                 else:
@@ -247,13 +300,13 @@ def naegeli_snow_mapping(gdir):
     Saves snow cover and SLA in naegeli_orig dimension in
     snow_cover.nc netCDF file
 
-    Parameters:
-    ---------
+    Parameters
+    ----------
     gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
 
-    Returns:
-    ---------
+    Returns
+    -------
     None
     """
 
@@ -263,11 +316,18 @@ def naegeli_snow_mapping(gdir):
         snow, ambig, elevation_grid, albedo_ind = primary_surface_type_evaluation(gdir)
     except TypeError:
         # Function Returns None: No image for this glacier available
+        log.error('No image for this glacier available - Abort Naegeli_snow_mapping')
         return
 
-    # Albedo slope: get DEM and albedo of ambigous range, transform into vector
+    # Albedo slope: get DEM and albedo of ambigous range,
+    # transform into vector
     if ambig.any():  # only use if ambigious area contains any True values
-        dem_amb = elevation_grid[ambig]
+        try:
+           dem_amb = elevation_grid[ambig]
+        except IndexError: 
+            log.error(' FIXME: weird bug (known only oon 2015-08-06 on RGI50-11.B5630n:',
+            ' dimensions dont match. Maybe related to overlap of tiles')
+            return
         albedo_amb = albedo_ind[ambig]
 
         # Write dem and albedo into pandas DataFrame:
@@ -323,9 +383,6 @@ def naegeli_snow_mapping(gdir):
     #plt.show()
    # plt.savefig(gdir.get_filepath('plt_naegeli'), bbox_inches='tight')
 
-    # Write pixel that are 0 in sentinel bands as nodata value
-    # so they dont get confused with ice area
-    snow[albedo_ind == 0] = -999
 
     # Save snow cover map to .nc file:
     snow_xr = xr.open_dataset(gdir.get_filepath('snow_cover'))
@@ -333,20 +390,26 @@ def naegeli_snow_mapping(gdir):
     # calculate SLA from snow cover map:
     SLA_new = get_SLA_asmag(gdir, snow)
     if SLA_new is None:
+        log.error(' SLA could not be detected with ASMAG: use SLA from Naegeli Method -',
+               ' POTENTIAL BUG! ')
         SLA_new = SLA
     SLA = SLA_new
 
     # write variables into dataset:
     snow_xr['snow_map'].loc[dict(model='naegeli_orig', time=cfg.PARAMS['date'][0])] = snow
+    # set NaN value:
+    snow_xr = snow_xr.where(snow_xr['snow_map']!=0)
     snow_xr['SLA'].loc[dict(model='naegeli_orig', time=cfg.PARAMS['date'][0])] = SLA
     # safe to file
     snow_new = snow_xr
+
     snow_xr.close()
         # remove old file:
     os.remove(gdir.get_filepath('snow_cover'))
     snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
     snow_new.close()
-    print("SLA = ", SLA)
+    print("SLA 2= ", SLA)
+    log.info('SLA 2= {}'.format(SLA))
 
 
 
@@ -375,13 +438,13 @@ def naegeli_improved_snow_mapping(gdir):
     Saves snow cover and SLA in naegeli_impr dimension in
     snow_cover.nc netCDF file
 
-    Parameters:
-    ---------
+    Parameters
+    ----------
     gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
 
-    Returns:
-    ---------
+    Returns
+    -------
     None
     """
     # Primary surface type evaluation:
@@ -390,6 +453,7 @@ def naegeli_improved_snow_mapping(gdir):
         snow, ambig, elevation_grid, albedo_ind = primary_surface_type_evaluation(gdir)
     except TypeError:
         # Function Returns None: No image for this glacier available
+        log.error('No image for glacier available- Abort naegeli_improved_snow_mapping')
         return
 
     # Find critical albedo: albedo at location with highest albedo slope
@@ -397,7 +461,13 @@ def naegeli_improved_snow_mapping(gdir):
 
         # Albedo slope: get DEM and albedo of ambigous range, transform into vector
     if ambig[ambig==1].size > 3:  # only use if ambigious area is bigger than 3 pixels:
-        dem_amb = elevation_grid[ambig]
+        try:
+            dem_amb = elevation_grid[ambig]
+        except IndexError:
+            # FIXME: on RGI50-11:B5630n: Mismatch of boolean index
+            log.error('BUG: (known on RGI50-11.B5630n: Mismatch of boolean index')
+            return
+
         albedo_amb = albedo_ind[ambig]
          # Write dem and albedo into pandas DataFrame:
         df = pd.DataFrame({'dem_amb': dem_amb.tolist(),
@@ -409,7 +479,11 @@ def naegeli_improved_snow_mapping(gdir):
         # 1. Fitting to step function:
         # albedo_crit_fit, SLA_fit = max_albedo_slope_fit(df)
         # 2. Iterate over elevation bands with increasing resolution
-        albedo_crit_it, SLA_it, r_square = max_albedo_slope_iterate(df)
+        try: 
+           albedo_crit_it, SLA_it, r_square = max_albedo_slope_iterate(df)
+        except TypeError:
+            # Function returns None: iteration could not be performed
+            return
         # Result: both have very similar results, but fitting
         # function seems more stable --> will use this value
         SLA = SLA_it
@@ -445,17 +519,16 @@ def naegeli_improved_snow_mapping(gdir):
                 if elevation_grid[i, j] > (SLA + r_crit):
                     snow[i, j] = True
     else:  # if no values in ambiguous area -->
+        log.error(' No values in ambiguous area')
         r_crit = 400
         # either all now covered or no snow at all
         if snow[snow == 1].size / snow.size > 0.9:  # high snow cover:
             # Set SLA to lowest limit
+            log.error('...because snow cover is very high - set SLA low')
             SLA = elevation_grid[elevation_grid > 0].min()
         elif snow[snow == 1].size / snow.size < 0.1:  # low/no snow cover:
+            log.error('...because of no/very low snow cover - set SLA to max')
             SLA = elevation_grid.max()
-
-    # Write pixel that are 0 in sentinel bands as nodata value
-    # so they dont get confused with ice area
-    snow[albedo_ind == 0] = -999
 
     #plt.subplot(2, 2, 4)
     #plt.imshow(albedo_ind)
@@ -481,11 +554,15 @@ def naegeli_improved_snow_mapping(gdir):
     # calculate SLA from snow cover map:
     SLA_new = get_SLA_asmag(gdir, snow)
     if SLA_new is None:
+        log.error('SLA by ASMAG is None: use SLA from improved mapping by Naegeli')
         SLA_new = SLA
 
     SLA = SLA_new
     # write variables into dataset:
     snow_xr['snow_map'].loc[dict(model='naegeli_improv', time=cfg.PARAMS['date'][0])] = snow
+    # Set NaN value:
+    snow_xr = snow_xr.where(snow_xr['snow_map']!=0)
+    # Set SLA
     snow_xr['SLA'].loc[dict(model='naegeli_improv', time=cfg.PARAMS['date'][0])] = SLA
     # safe to file
     snow_new = snow_xr
@@ -493,8 +570,8 @@ def naegeli_improved_snow_mapping(gdir):
         # remove old file:
     os.remove(gdir.get_filepath('snow_cover'))
     snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
-    print("SLA =", SLA)
-
+    print("SLA 3=", SLA)
+    log.info('SLA 3= {}'.format(SLA))
     snow_new.close()
     snow_xr.close()
 
@@ -513,16 +590,18 @@ def max_albedo_slope_iterate(df):
     The goodness-fit (r_squared) value of the model to the data is
     then saved to later implement in the retrieval of a dynamic r_crit value
 
-    Params:
-    ---------
+    Params
+    ------
     df: Dataframe  containing the variable dem_amb (elevations of ambiguous range)
     and albedo_amb (albedo values in ambiguous range) of ambiguous area
 
-    Returns:
-    ---------
-    alb_max_slope, max_loc: float: Albedo at maximum albedo slope and location
+    Returns
+    -------
+    alb_max_slope, max_loc: float
+            Albedo at maximum albedo slope and location
             of maximum albedo slope
-    r_square: float: r_square value to determine the fit of a step function onto the
+    r_square: float
+            r_square value to determine the fit of a step function onto the
             elevation-albedo profile
     """
 
@@ -570,11 +649,14 @@ def max_albedo_slope_iterate(df):
             # previous iteration:
             if i > 1:
                 if max_loc > 0:
-                    max_loc_sub = np.argmax((np.gradient
-                                             (albedo_avg
-                                                   [(2 * max_loc - 2):(2 * max_loc + 2)])))
-                    max_loc = 2 * max_loc - 2 + max_loc_sub
+                    try:
+                        max_loc_sub = np.argmax((np.gradient
+                        (albedo_avg[(2 * max_loc - 2):(2 * max_loc + 2)])))
+                        max_loc = 2 * max_loc - 2 + max_loc_sub
                     # new location of maximum albedo slope
+                    except ValueError:
+                        # Array too small or whatever
+                        return
                 else:
                     max_loc = np.argmax((np.gradient(albedo_avg)))
                     # first definition of max. albedo slope
@@ -628,15 +710,17 @@ def max_albedo_slope_orig(df):
     albedo/elevation slope as the maximum gradient
     of the elevation albedo profile with 20 Meter bins
 
-    Parameters:
-    ---------
-    df: Dataframe  containing the variable dem_amb (elevations of ambiguous range)
-    and albedo_amb (albedo values in ambiguous range)
+    Parameters
+    ----------
+    df: PandasDataFrame
+        containing the variable dem_amb (elevations of ambiguous range)
+        and albedo_amb (albedo values in ambiguous range)
 
 
-    Returns:
-    alb_max_slope, height_max_slope: Int:
-            Albedo at maximum albedo slope and location
+    Returns
+    -------
+    alb_max_slope, height_max_slope: Int
+            Albedo at maximum albedo slope and altitude
                 of maximum albedo slope
     """
 
@@ -678,6 +762,7 @@ def max_albedo_slope_orig(df):
     try:
         max_loc = np.argmax((np.gradient(albedo_avg)))
     except ValueError:
+        log.error('Can not dtermine location of maximum Gradient')
         max_loc = 0
     if max_loc < (len(albedo_avg) - 1):
         # find location between two values, set as final value for albedo
@@ -687,9 +772,11 @@ def max_albedo_slope_orig(df):
     else:
         # if SLA is at highest elevation, pick this valiue
         try:
+            log.error('SLA is at highest elevation')
             alb_max_slope = albedo_avg[max_loc-1]
             height_max_slope = dem_avg[max_loc-1]
         except IndexError:
+            log.error('Glacier smaller than 20 Meters')
             # Glacier smaller than 20 Meters
             alb_max_slope = df.albedo_amb.max()
             height_max_slope = df.dem_amb.max()
@@ -718,31 +805,44 @@ def max_albedo_slope_orig(df):
 def step_function_model(alti, a, b, c):
     """ Create model for step-function
 
-    Parameters:
+    Parameters
     ----------
-    alti: Altitude distribution of glacier
-    a: step size of heaviside function
-    b: elevation of snow-ice transition
-    c: average albedo of bare ice
+    alti: np.array
+        Altitude distribution of glacier
+    a:  float
+        step size of heaviside function
+    b:  float
+        elevation of snow-ice transition
+    c:  float
+        average albedo of bare ice
 
-    Returns:
-    ---------
-    model of step-function as np.array with gi
+    Returns
+    -------
+    model: np.array
+        model of step-function
     """
-    return (0.5 * (np.sign(alti - b) + 1)) * a + c  # Heaviside fitting function
+    return (0.5 * (np.sign(alti - b) + 1)) * a + c 
+        # Heaviside fitting function
 
 def get_r_squared(step_function_model, dem_avg, albedo_avg, bounds):
     """
-    Retrieved r_squared value from fitting Step function to elevation-albedo profile:
+    Retrieves r_squared value from fitting step function to
+    elevation-albedo profile:
 
 
-    Parameters:
-    -----------
-    step_function_model: function that creates step function with input parameters
-    dem_avg: np.array: height values elevation bands on glacier with a resolution
+    Parameters
+    ----------
+    step_function_model: function
+            function in snow_mapping.py that creates step function
+            with input parameters
+    dem_avg: np.array
+        height values in  elevation bands on
+        glacier with a resolution
         determined by the iteration method
-    albedo_avg: np.array: albedo values in elevation bands
-    bounds: tuple of two lists: upper and lower parameter range
+    albedo_avg: np.array
+        albedo values in elevation bands
+    bounds: tuple of two lists: 
+        upper and lower parameter range
                     ([a_min],[b_min], [c_min], [a_max, b_max, c_max])
         with
             a: step size of heaviside function: 0.1-0.3
@@ -750,9 +850,10 @@ def get_r_squared(step_function_model, dem_avg, albedo_avg, bounds):
                                         to  dem_max - (dem_max -SLA)/2
             c: average albedo of bare ice: 0.25-0.55
 
-    Returns:
-    -----------
-    r_squared: float: r_squared value (goodness of fit) of fitted step function model
+    Returns
+    ------- 
+    r_squared: float
+        r_squared value (goodness of fit) of fitted step function model
                 to elevation-albedo-profile
     """
 
@@ -765,6 +866,7 @@ def get_r_squared(step_function_model, dem_avg, albedo_avg, bounds):
         r_squared = 1 - (ss_res / ss_tot)
     except ValueError:
         print("What's the problem here?")
+        log.error('BUG: Unkown problem with r_squared')
         r_squared = -1
 
     return r_squared
@@ -778,24 +880,39 @@ def primary_surface_type_evaluation(gdir):
     between are the ambiguous range where secondary surface type evaluation is
     performed on
 
-    Parameters:
-    ------------
-    gdir: GlacierDirectory: pyClass
+    Parameters
+    ----------
+    gdir: GlacierDirectory
+        pyClass
 
-    Returns:
-    ------------
-    snow: np.array, binary: Snow Covered Area after primary surface type evaluation
-    ambig: np.array, binary: Amiguous Area for secondary surface type evaluation:
-    elevation_grid: np.array: Height of DEM on Glacier in m
-    albedo_ind: np.array: Broadband Surface Albedo in
+    Returns
+    -------
+    snow: np.array, binary
+        Snow Covered Area after primary surface type evaluation
+    ambig: np.array, binary
+        Amiguous Area for secondary surface type evaluation:
+    elevation_grid: np.array
+        Height of DEM on Glacier in m
+    albedo_ind: np.array
+        Broadband Surface Albedo in
     """
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
     except FileNotFoundError:
+        # no data for this glacier on 1st date
+        log.error('No data for this glacier on 1st date- exit primary surface type evaulation')
         return
+    try: 
+        test = sentinel.sel(band='B03',time=cfg.PARAMS['date'][0])
+    except KeyError:
+        # no data for this glacier on current date
+        log.error('No data for this glacier on this date - exit primary surface type evaluation')
+        return
+
     if not sentinel.sel(band='B03', time=cfg.PARAMS['date'][0]). \
             img_values.values.any():  # check if all non-zero values in array
         # Cloud cover too high for a good classification
+        log.error('All zero values (clouds)- No primary classification possible')
         return
 
     dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
@@ -842,10 +959,15 @@ def primary_surface_type_evaluation(gdir):
                     elevation_grid.shape[1] > albedo_ind.shape[1]:  # Shorten elevation grid
                 elevation_grid = elevation_grid[0:albedo_ind.shape[0], 0:albedo_ind.shape[1]]
             if elevation_grid.shape[0] < albedo_ind.shape[0]:  # Extend elevation grid: append row:
-                elevation_grid = np.append(elevation_grid,
+                try: 
+                    elevation_grid = np.append(elevation_grid,
                                            [elevation_grid[
                                             (elevation_grid.shape[0] -
                                              albedo_ind.shape[0]), :]], axis=0)
+                except IndexError:
+                    # BUG: something went wrong with sentinel, only 1 case in 100000 files
+                    log.error('BUG- Something wrong with Sentinel-Imagery - Index Error')
+                    return
             if elevation_grid.shape[1] < albedo_ind.shape[1]:  # append column
                 b = elevation_grid[:, (elevation_grid.shape[1] -
                                        albedo_ind.shape[1]):elevation_grid.shape[1]]
@@ -893,13 +1015,15 @@ def albedo_knap(sentinel):
     Cross-comparison of albedo products for glacier surfaces derived from airborne and
     satellite (Sentinel-2 and Landsat 8) optical data. Remote Sensing, 9(2):110
 
-    Parameters:
-    -------------
-    sentinel: GeoPandas DataSet: all Sentinel Bands for all dates of this scene
+    Parameters
+    ----------
+    sentinel: GeoPandas DataSet
+            all Sentinel Bands for all dates of this scene
 
-    Returns:
-    ------------
-    albedo_k: np.array: Broadband Surfac Albedo
+    Returns
+    -------
+    albedo_k: np.array
+            Broadband Surfac Albedo
 
     """
     albedo_k = 0.726 * sentinel.sel(band='B03',

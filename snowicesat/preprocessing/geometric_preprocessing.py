@@ -19,6 +19,14 @@ def crop_satdata_to_glacier(gdir):
     - all 12 Sentinel Bands in crop_sentinel_to_glacier
     - Solar Zenith and Azimuth Angle in crop_metadata_to_glacier
     - DEM in same projection as Sentinel Tile in crop_dem_to_glacier
+    Parameters:
+    ----------
+    gdirs: py:class:'Crampon.GlacierDirectory'
+        A Glacier Directory Instance
+    
+    Returns:
+    --------
+    None
     """
 
     crop_sentinel_to_glacier(gdir)
@@ -35,8 +43,9 @@ def crop_sentinel_to_glacier(gdir):
     saves into netCDF file for current date
 
     Parameters:
-    --------
-    gdir:
+    ----------
+    gdir: py:class:'crampon.GlacierDirectory'
+        A GlacierDirectoryInstance
 
     Returns:
     --------
@@ -53,6 +62,7 @@ def crop_sentinel_to_glacier(gdir):
     var_name = 'img_values'
     time_stamp = cfg.PARAMS['date'][0]
     file_group = 'sentinel'
+    print("Crop Geotiff to glacier")
 
     crop_geotiff_to_glacier(gdir, img_list,  dim_name, dim_label,
                             var_name, time_stamp, file_group)
@@ -68,13 +78,15 @@ def crop_metadata_to_glacier(gdir):
     saves into netCDF file for current date
 
     Parameters:
-    --------
-    gdir:
+    ----------
+    gdir: py:class:'Crampon.GlacierDirectory'
+        A GlacierDiretoryInstance
 
     Returns:
     --------
     None
     """
+    print("Crope Metadata to glacier")
     img_path = os.path.join(os.path.join(
         cfg.PATHS['working_dir'],
         'cache', str(cfg.PARAMS['date'][0]),
@@ -100,13 +112,15 @@ def crop_dem_to_glacier(gdir):
     saves into netCDF file for current date
 
     Parameters:
-    --------
-    gdir:
+    ----------
+    gdir: py:class:'crampon.GlavierDirectory'
+        A GlacierDirectoryInstance
 
     Returns:
     --------
     None
     """
+    print("Crop DEM to glacier")
     img_path = cfg.PATHS['dem_dir']
     img_list = os.listdir(img_path)
     img_list = [os.path.join(img_path, band) for band in img_list]
@@ -191,23 +205,29 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
        netCDF file xxxx.nc
 
     Params:
-    -----------
+    ------
     gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
-    img_list: os.listdir(img_path), list with paths of all
+    img_list: os.listdir(img_path)
+        list with paths of all
         tiles (need to have same resolution and projection)
         to be processed into netCDF
-    dim_name: str: dimension name for variables: e.g. height, bands, angles
-    dim_label: list of str: name of e.g. each band or each angle
-            ['solar_azimuth','solar_zenith'], range(len(list(range(1,len(b_sub)+1))
-    var_name: str: Name of variable: e.g. 'img_values', 'height', 'angles'
-    time_stamp: int: date in format yyyymmdd (no datetime.datetime!)
-    file_group: str: filepath in cfg.PATH, e.g. 'sentinel', 'solar_angles'
+    dim_name: str
+        dimension name for variables: e.g. height, bands, angles
+    dim_label: list of str
+        name of e.g. each band or each angle
+         ['solar_azimuth','solar_zenith'], range(len(list(range(1,len(b_sub)+1))
+    var_name: str
+        Name of variable: e.g. 'img_values', 'height', 'angles'
+    time_stamp: int
+        date in format yyyymmdd (no datetime.datetime!)
+    file_group: str
+        filepath in cfg.PATH, e.g. 'sentinel', 'solar_angles'
 
 
     Returns:
-    ----------
-        None
+    -------
+    None
     """
     glacier = gpd.read_file(gdir.get_filepath('outlines'))
 
@@ -227,10 +247,8 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                 # Convert outline to projection of tile (src_crs) to crop it out
                 glacier = glacier.to_crs(src_crs)
                 glacier.to_file(driver='ESRI Shapefile',
-                                filename=os.path.join(cfg.PATHS['working_dir'],
-                                                      'outline_tile_grid.shp'))
-                with fiona.open(os.path.join(cfg.PATHS['working_dir'],
-                                             'outline_tile_grid.shp'), "r") \
+                                filename=gdir.get_filepath('outlines_proj_tile'))
+                with fiona.open(gdir.get_filepath('outlines_proj_tile'), "r") \
                         as glacier_reprojected:
                     # Read local geometry
                     features = [feature["geometry"] for feature in glacier_reprojected]
@@ -330,6 +348,7 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
 
     # Remove cropped_cache.tif file:
     os.remove(gdir.get_filepath('cropped_cache'))
+    os.remove(gdir.get_filepath('outlines_proj_tile'))
 
 
 

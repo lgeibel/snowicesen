@@ -78,11 +78,17 @@ ONE_FIFTH = 1./5.
 _doc = 'A time series of all available DEMs for the glacier. Contains groups' \
        ' for different resolutions.'
 CBASENAMES['homo_dem_ts'] = ('homo_dem_ts.nc', _doc)
+
 _doc = 'A time series of all available DEMs for the glacier, brought to the ' \
        'minimum common resolution.'
 CBASENAMES['dem_ts'] = ('dem_ts.nc', _doc)
+
+_doc = 'Shapefile containing the glacier outlines in the projection of the sentinel tile'
+CBASENAMES['outlines_proj_tile'] = ('outlines_proj_tile.shp',_doc)
+
 _doc = 'A netcdf file containing all sentinel bands for given times for the glacier'
 CBASENAMES['sentinel'] =('sentinel.nc', _doc)
+
 _doc = 'A netcdf file containing all sentinel bands for given times for the glacier' \
        'for temporary writing'
 CBASENAMES['sentinel_temp'] =('sentinel_temp.nc', _doc)
@@ -91,7 +97,7 @@ _doc = 'A netcdf file containing all sentinel bands for given times for the glac
 CBASENAMES['ekstrand'] =('ekstrand.nc', _doc)
 _doc = 'A netcdf file containing solar zenith and solar azimuth angle for a glacier'
 CBASENAMES['solar_angles'] =('solar_angles.nc', _doc)
-_doc = 'A netcdf file containing all sentinel bands for given times for the glacier, ' \
+_doc = 'A netcdf file containing all sentinel bands for given times for :the glacier, ' \
        'after applying the cloud mask'
 CBASENAMES['cloud_masked'] =('cloud_masked.nc', _doc)
 _doc = 'A netcdf file containing snow cover map of each glacier after ASMAG algorithm' \
@@ -111,10 +117,15 @@ CBASENAMES['plt_cloud_mask'] = ('plot_cloud_mask.png', _doc)
 CBASENAMES['plt_all'] = ('plot_all', _doc)
 _doc = 'Plots all snow maps and SLA for 1 glacier and 1 time step in a figure'
 
-
 CPARAMS['date'] = ['date']
 CPARAMS['cloudcover'] = ['cloudcover']
+# Tile ID of Sentinel -2 Tile:
 CPARAMS['tile_id'] = ['']
+# Mean of Solar Zenith Angle
+CPARAMS['zenith_mean'] = ['']
+# Mean of Solar Azimuth Angle
+CPARAMS['azimuth_mean'] = ['']
+
 
 
 # some more standard names, for less hardcoding

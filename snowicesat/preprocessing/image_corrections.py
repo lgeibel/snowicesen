@@ -10,6 +10,8 @@ import snowicesat.utils as utils
 from scipy import stats
 from s2cloudless import S2PixelCloudDetector
 import matplotlib.pyplot as plt
+import rasterio
+import os
 try:
     # rasterio V > 1.0
     from rasterio.merge import merge as merge_tool
@@ -32,29 +34,34 @@ def ekstrand_correction(gdir):
         A GlacierDirectory instance.
 
     Returns:
-    -----------
+    -------
     None
     """
+    # Open Satellite image: 
+    try: 
+        sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+    except FileNotFoundError:
+        # Glacier not located in tile:
+        log.error('Glacier not located in tile- aborting Ekstrand-Correction')
+        return
     # Get slope, aspect and hillshade of Glacier Scene:
     try:
         slope, aspect, hillshade, solar_azimuth, solar_zenith =\
             calc_slope_aspect_hillshade(gdir)
     except TypeError:
-        # Glacier not located in tile
-        return
-
-    # Open satellite image:
-    try:
-        sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
-    except FileNotFoundError:
-        # Glacier not located in tile
+        # Function returns None: Glacier not located in tile
+        log.error('Bug in Solar Angle File - Skip Ekstrand Correction')
         return
     
     b_sub = []
     # Loop over all bands:
     for band_id in sentinel['band'].values:
         time_id = cfg.PARAMS['date'][0]
-        band_arr = sentinel.sel(band=band_id, time=time_id).img_values.values
+        try:
+            band_arr = sentinel.sel(band=band_id, time=time_id).img_values.values
+        except KeyError:
+            log.info('Glacier not located in tile- Aborting Ekstrand Correction')
+            return
         # Prepare data for linear regression after Ekstrand
         # (for equation see Gao et. al, 2015:
         #  "An improved topographic correction model based on Minnaert"
@@ -89,6 +96,7 @@ def ekstrand_correction(gdir):
         except ValueError:
             # very few data seem to have wrong solar angle data
             # --> simply using uncorrected values for this for now...
+            log.info('Incorrect solar angles - using uncorrected image')
             band_arr_correct_ekstrand = band_arr
             band_arr_correct_bippus = band_arr
 
@@ -128,10 +136,10 @@ def calc_slope_aspect_hillshade(gdir):
         A GlacierDirectory instance.
 
     Returns:
-    ----------
-    slope, aspect, hillshade, azimuth_rad, zenith_rad:
-                3-D numpy arrays containing slope, aspect, hillshade
-                 and solar azimiuth and solar zenith angles in radians
+    --------
+    slope, aspect, hillshade, azimuth_rad, zenith_rad: np.arrays
+        3-D numpy arrays containing slope, aspect, hillshade
+        and solar azimiuth and solar zenith angles in radians
     """
 
     dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
@@ -147,11 +155,16 @@ def calc_slope_aspect_hillshade(gdir):
              .angles_in_deg.values
         sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
     except FileNotFoundError:
-        # Glacier not located in tile
-        return
+        # Solar Angles have problem with Georeferencing
+        log.info('Faulty Solar Angle file')
+        # Workaround: Use average of SOlar Azimuth and Zenith angle:
+        solar_zenith = np.full(elevation_grid.shape, cfg.PARAMS['zenith_mean'])
+        solar_azimuth = np.full(elevation_grid.shape, cfg.PARAMS['azimuth_mean'])
     except KeyError:
-        # No information for this datw & glacier
-        return
+        # No information for this date & glacier
+        log.info('Faulty Solar Angle file')
+        solar_zenith = np.full(elevation_grid.shape, cfg.PARAMS['zenith_mean'])
+        solar_azimuth = np.full(elevation_grid.shape, cfg.PARAMS['azimuth_mean'])
 
     while solar_zenith.shape != elevation_grid.shape:
         print(solar_zenith.shape, elevation_grid.shape)
@@ -159,9 +172,13 @@ def calc_slope_aspect_hillshade(gdir):
                 elevation_grid.shape[1] > solar_zenith.shape[1]: # Shorten elevation grid
             elevation_grid = elevation_grid[0:solar_zenith.shape[0], 0:solar_zenith.shape[1]]
         if elevation_grid.shape[0] < solar_zenith.shape[0]: # Extend elevation grid: append row:
-            elevation_grid = np.append(elevation_grid,
-                                       [elevation_grid[(elevation_grid.shape[0]-
-                                                     solar_zenith.shape[0]), :]], axis = 0)
+            try:
+                elevation_grid = np.append(elevation_grid,
+                            [elevation_grid[(elevation_grid.shape[0]-
+                                  solar_zenith.shape[0]), :]], axis = 0)
+            except IndexError: 
+                # Bug: Someone is having a problem here...
+                return
         if elevation_grid.shape[1] < solar_zenith.shape[1]: # append column
             b = elevation_grid[:, (elevation_grid.shape[1]-
                 solar_zenith.shape[1]):elevation_grid.shape[1]]
@@ -211,16 +228,22 @@ def cloud_masking(gdir):
         A GlacierDirectory instance.
 
     Returns:
-    ----------
+    -------
     None
     """
 
     cloud_detector = S2PixelCloudDetector(threshold=0.6, average_over=1, dilation_size=2)
+
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('ekstrand'))
     except FileNotFoundError:
-        # 1st time step: no data for this glacier available
-        return
+        # Check if uncorrected sentinel file exists: 
+        try:
+            sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+        except FileNotFoundError: # No data exists at all
+            # 1st time step: no data for this glacier available
+            log.info('No data for this glacier - Abort Cloud Masking') 
+            return
 
     try:
         wms_bands = sentinel.sel(
@@ -228,8 +251,17 @@ def cloud_masking(gdir):
         time=cfg.PARAMS['date'][0])\
         .img_values.values
     except KeyError:
-        # No data for this glacier & date
-        return
+        # Check if uncorrected Sentinel File exists/has data: 
+        try: 
+            sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+            wms_bands = sentinel.sel(
+            band=['B01', 'B02', 'B04','B05','B08','B8A','B09', 'B10', 'B11', 'B12'],
+            time=cfg.PARAMS['date'][0])\
+                    .img_values.values
+        except KeyError:
+            # No data for this glacier & date
+            log.info('No data for this glacier and date - Abort Cloud Masking')
+            return
 
     # rearrange dimensions, goal :[height, width, channels].
     #  now: [channels, height, width] and correct into to float (factor 10000)
@@ -252,12 +284,13 @@ def cloud_masking(gdir):
             cloud_cover = 1 - len(band_array[band_array>0])/len(image[image>0])
         except ZeroDivisionError:
             # for 100 % cloud cover:
-            cloud_cover = 1.0
-            band_array.fill(0)
+            log.info:('Cloud Cover is 100%- abort Cloud Masking')
+            return
 
-        if cloud_cover > 0.6:
+        if cloud_cover > 0.7:
             # -> set all pixels to 0
-            band_array.fill(0)
+            log.info('Cloud COver over 70% - abort Cloud Masking')
+            return
         band_array = band_array[0,:,:]
         sentinel['img_values'].loc[(dict(band=band_id, time=cfg.PARAMS['date'][0]))] = band_array
 
@@ -291,17 +324,18 @@ def remove_sides(gdir):
     Processed bands stored in sentinel_temp.nc file
 
     Parameters:
-    ---------
+    ----------
     gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
 
     Returns:
-    ---------
+    -------
     None
     """
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('cloud_masked'))
     except FileNotFoundError:
+        log.info('No data for this glacier and date - Abort remove_sides')
         return
     band_array = {}
     for band_id in sentinel['band'].values: # Read all bands as np arrays
@@ -312,6 +346,7 @@ def remove_sides(gdir):
             .img_values.values/10000
         except KeyError:
             # no data for this date & glacier
+            log.info('No data for this glacier and date - Abort remove_sides')
             return
 
     # Calculate NDSI - normalized differencial snow index
