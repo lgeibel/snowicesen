@@ -1,0 +1,51 @@
+Skype 25.02.2019:
+
+Function: download_sentinel(lat_ext, lon_ext)
+ Needs: sentinelhub_username, sentinelhub_password, polygon.geojson of glacier, date (work with only one day for now!), cloudcover, downloadpath
+Q: where do I put this? CH_params_file?
+ 
+ 
+1. Use glacier outline, transform to .geojson
+	Problems: local grid of glacier outline too complex AND in funny local grid, server cant handle this. 
+	Better: give lat. lon extent, calculate bounding box to hand over to sentinelsat:
+		Advantage: lat_ext, lon_ext is already computed in define_glacier_region
+	See: 
+	define_glacier_region call of get_topo_file(lat, lon extent) 
+
+	
+
+2. Download all sentinel-tiles intersecting with outline/bounding box (reuse code I wrote to test sentinselsat module). 
+		Check if data is available for given day
+		Check if data has already been downladed to avoid re-downloading (not working yet): 
+			Question: how to handle this? Should I safe .SAFE files? Where, how long? 
+			How do I add an entry to the cfg.PATHS and cfg.PARAMS dictionary? In cfg.py file?
+		
+		Output:  .SHAPE directory in working directory with all bands in .jp2 files, metadata, etc. in the working directory
+		
+		----------*********---- WORKS UNTIL HERE  ----*******------
+	
+3. For each band: 
+	- merge all tiles (Q: which file format is best?)
+	Q: where does the reprojection happen? 
+		I first want to transform sentinel-data to local grid (?). 
+		How does this work? Conceptual, is there a function? In which part of the code does is happen?
+		Must be similar to DEMs, how do they get reprojected?
+		What input/output?
+		
+	- crop to glacier extend (reuse code I wrote for proposal into an automated function?)
+	--> Question: this needs to happen outside of the download function. Maybe as entity task?
+	- write band into glacier directory
+	
+
+	
+General Questions: 
+Technical: What functions can I reuse? What as template?
+
+
+Conceptual:  
+What is gonna happen to Metadata? How do I re-organize it into GlacierDirectories?
+
+General: 
+How much should I clean up the code? Now it has way too many functions and a super complex structure where I
+dont need most of it.  But it is probably kinda tricky to extract the parts I need....or just leave it? 
+But that would make the package super messy.

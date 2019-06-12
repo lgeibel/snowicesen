@@ -28,15 +28,15 @@ their RGIId)
 
 import warnings
 warnings.filterwarnings('ignore')
-from snowicesat import cfg
-from snowicesat import tasks
+from snowicesen import cfg
+from snowicesen import tasks
 import geopandas as gpd
 import logging
-from snowicesat.workflow import init_glacier_regions
-from snowicesat.utils import download_all_tiles
+from snowicesen.workflow import init_glacier_regions
+from snowicesen.utils import download_all_tiles
 from oggm.workflow import execute_entity_task
 from datetime import timedelta
-from snowicesat.utils import datetime_to_int, int_to_datetime, extract_metadata
+from snowicesen.utils import datetime_to_int, int_to_datetime, extract_metadata
 
 
 logging.basicConfig(format='%(asctime)s: %(name)s: %(message)s',
@@ -44,15 +44,15 @@ logging.basicConfig(format='%(asctime)s: %(name)s: %(message)s',
 log = logging.getLogger(__name__)
 log.setLevel('DEBUG')
 
-cfg.initialize("/scratch_net/vierzack03_third/geibell/snowicesat/snowicesat_params.cfg")
+cfg.initialize("/scratch_net/vierzack03_third/geibell/snowicesen/snowicesen_params.cfg")
 # Caution: In crampon.utils.GlacierDirectory._init cfg.initialize is
 # called again --> change path there as well!
 
 if __name__ == '__main__':
     # Shapefile with Glacier Geometries:
-    rgidf = gpd.read_file("/scratch_net/vierzack03_third/geibell/snowicesat/data/outlines/rgi_copy_status.shp")
+    rgidf = gpd.read_file("/scratch_net/vierzack03_third/geibell/snowicesen/data/outlines/rgi_copy_status.shp")
     # Shapefile with Sentinel -2 tiles
-    tiles = gpd.read_file('/scratch_net/vierzack03_third/geibell/snowicesat/data/outlines/sentinel2_tiles_world.shp')
+    tiles = gpd.read_file('/scratch_net/vierzack03_third/geibell/snowicesen/data/outlines/sentinel2_tiles_world.shp')
     # List of TileIDs that intersect with Swiss Glacier Inventory
     # (needs to be adjusted if using other region)
     tiles = ['32TLS', '32TLR', '32TMS', '32TMR',
@@ -79,7 +79,7 @@ if __name__ == '__main__':
  #   log.info('Number of glaciers: {}'.format(len(rgidf)))
 
     #Go - initialize working directories
-    gdirs = init_glacier_regions(rgidf, reset= True, force=True)
+    gdirs = init_glacier_regions(rgidf, reset= False, force=True)
     print("Done with init_glacier_regions")
 
 
@@ -92,7 +92,7 @@ if __name__ == '__main__':
                                                 end_date_var)
         print("Date = ", cfg.PARAMS['date'][0])
        # Download data for given glaciers for this date
-        tiles_downloaded = download_all_tiles(rgidf, tiles, use_tiles = False,
+        tiles_downloaded = download_all_tiles(rgidf, tiles, use_tiles = True,
                                               clear_cache = False,
                                               clear_safe= False) 
                                             # Function in utils

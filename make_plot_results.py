@@ -28,15 +28,15 @@ their RGIId)
 
 import warnings
 warnings.filterwarnings('ignore')
-from snowicesat import cfg
-from snowicesat import tasks
+from snowicesen import cfg
+from snowicesen import tasks
 import geopandas as gpd
 import logging
-from snowicesat.workflow import init_glacier_regions
-from snowicesat.utils import download_all_tiles
+from snowicesen.workflow import init_glacier_regions
+from snowicesen.utils import download_all_tiles
 from oggm.workflow import execute_entity_task
 from datetime import timedelta
-from snowicesat.utils import datetime_to_int, int_to_datetime, extract_metadata
+from snowicesen.utils import datetime_to_int, int_to_datetime, extract_metadata
 
 
 logging.basicConfig(format='%(asctime)s: %(name)s: %(message)s',
@@ -44,12 +44,12 @@ logging.basicConfig(format='%(asctime)s: %(name)s: %(message)s',
 log = logging.getLogger(__name__)
 log.setLevel('DEBUG')
 
-cfg.initialize("/scratch_net/vierzack03_third/geibell/snowicesat/snowicesat_params.cfg")
+cfg.initialize("/scratch_net/vierzack03_third/geibell/snowicesen/snowicesen_params.cfg")
 # Caution: In crampon.utils.GlacierDirectory._init cfg.initialize is
 # called again --> change path there as well!
 
 if __name__ == '__main__':
-    rgidf = gpd.read_file("/scratch_net/vierzack03_third/geibell/snowicesat/data/outlines/rgi_copy_status.shp")
+    rgidf = gpd.read_file("/scratch_net/vierzack03_third/geibell/snowicesen/data/outlines/rgi_copy_status.shp")
     # Ignore all values glaciers smaller than 0.1 km^2
     rgidf = rgidf.loc[rgidf['Area'] > 0.1]
 #    rgidf = rgidf.sample(n=10)
