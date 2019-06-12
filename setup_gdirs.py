@@ -46,7 +46,7 @@ log.setLevel('DEBUG')
 
 cfg.initialize("/scratch_net/vierzack03_third/geibell/snowicesen/snowicesen_params.cfg")
 # Caution: In crampon.utils.GlacierDirectory._init cfg.initialize is
-# called again --> change path there as well!
+# called again --> change path there as well! EDIT: only necessary in Windows
 
 if __name__ == '__main__':
     # Shapefile with Glacier Geometries:
