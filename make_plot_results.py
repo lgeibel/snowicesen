@@ -1,31 +1,3 @@
-""" Execute snowicesat
-
-This is the main file to excute snowicesat: 
-It inititalizes the Configuration/Parameters file, 
-reads the outlines of the region and creates the Glacier Directories
-(see OGGM: Open Global Glacier Model for Documentation of the Class).
-It then iterates over the given time period and downloads
-all Sentinel-2 images available for this region & current date, 
-crops the big tile to sentinel.nc file for each glacier and 
-then performs the entity tasks for preprocessing (Ekstrand Correction,
-Cloud Masking, thresholding to remove dark, debris-covered areas).
-After the preprocessing, 3 snow mapping algorithms are performed so
-retrieve the snow covered area and the SLA  on each glacier.
-
-The parameters file is inititalized in as snowicesat_params.cfg. 
-For any other file, the path in cfg.initialite needs to be adapted
-
-The rgidf contains all glaciers on which the snow mapping should be
-performed. Initially, those are all polygons in the .shp file that 
-determines the region of interest (usually based on a glacier
-inventory).
-For snow  classification, it is advised to focus on areas larger 
-than 0.1 km^2. 
-Additionally, any subset of glaciers can be specified (e.g. by
-their RGIId)
-"""
-
-
 import warnings
 warnings.filterwarnings('ignore')
 from snowicesen import cfg

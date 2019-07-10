@@ -1,3 +1,14 @@
+""" 
+=======================
+geometric_preprocessing
+=======================
+
+Collections of entity task and functions to crop geoTIFFs
+of sentinel images, solar incidence angles and the DEM to 
+the glacier extents and reproject them to the local grid
+
+"""
+
 import snowicesen.cfg as cfg
 from oggm.utils import *
 from rasterio.mask import mask as riomask
@@ -20,7 +31,7 @@ def crop_satdata_to_glacier(gdir):
     - Solar Zenith and Azimuth Angle in crop_metadata_to_glacier
     - DEM in same projection as Sentinel Tile in crop_dem_to_glacier
     Parameters:
-    ----------
+    -----------
     gdirs: py:class:'Crampon.GlacierDirectory'
         A Glacier Directory Instance
     
@@ -43,7 +54,7 @@ def crop_sentinel_to_glacier(gdir):
     saves into netCDF file for current date
 
     Parameters:
-    ----------
+    -----------
     gdir: py:class:'crampon.GlacierDirectory'
         A GlacierDirectoryInstance
 
@@ -78,7 +89,7 @@ def crop_metadata_to_glacier(gdir):
     saves into netCDF file for current date
 
     Parameters:
-    ----------
+    -----------
     gdir: py:class:'Crampon.GlacierDirectory'
         A GlacierDiretoryInstance
 
@@ -112,7 +123,7 @@ def crop_dem_to_glacier(gdir):
     saves into netCDF file for current date
 
     Parameters:
-    ----------
+    -----------
     gdir: py:class:'crampon.GlavierDirectory'
         A GlacierDirectoryInstance
 
@@ -204,8 +215,8 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
     - Writing local raster of all bands to multi-temporal
        netCDF file xxxx.nc
 
-    Params:
-    ------
+    Parameters:
+    -----------
     gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
     img_list: os.listdir(img_path)
@@ -226,7 +237,7 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
 
 
     Returns:
-    -------
+    --------
     None
     """
     glacier = gpd.read_file(gdir.get_filepath('outlines'))
@@ -346,7 +357,7 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
                                'w',
                                unlimited_dims={'time': True})
             appended.close()
-           # shutil.move(gdir.get_filepath("sentinel_temp"), gdir.get_filepath(file_group))
+           # shutil.move(gdir.get_filepath("sentinel_temp"), gd-ir.get_filepath(file_group))
 
 
     # Remove cropped_cache.tif file:

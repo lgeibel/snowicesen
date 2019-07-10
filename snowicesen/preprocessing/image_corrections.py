@@ -1,3 +1,13 @@
+"""
+=================
+image_corrections
+=================
+Entity Tasks for  Ekstrand Terain Correction, 
+cloud masking with s2cloudless and removal of dark
+(debris covered/shaded) sides of glacier
+
+"""
+
 from __future__ import absolute_import, division
 
 import numpy as np
@@ -34,8 +44,9 @@ def ekstrand_correction(gdir):
         A GlacierDirectory instance.
 
     Returns:
-    -------
-    None
+    --------
+    None 
+
     """
     # Open Satellite image: 
     try: 
@@ -131,7 +142,7 @@ def calc_slope_aspect_hillshade(gdir):
     hillshade of the scene in the gdir is derived
 
     Parameters:
-    ----------
+    -----------
     gdirs: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
 
@@ -223,13 +234,14 @@ def cloud_masking(gdir):
     - saves processed scene with all bands in cloud_masked.nc file
 
     Parameters:
-    ----------
+    -----------
     gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
 
     Returns:
-    -------
+    --------
     None
+
     """
 
     cloud_detector = S2PixelCloudDetector(threshold=0.6, average_over=1, dilation_size=2)
@@ -304,6 +316,7 @@ def cloud_masking(gdir):
 def plot_cloud_mask(mask, bands, figsize=(15, 15), fig=None):
     """
     Utility function for plotting a binary cloud mask.
+
     """
     if fig == None:
         plt.figure(figsize=figsize)
@@ -324,13 +337,14 @@ def remove_sides(gdir):
     Processed bands stored in sentinel_temp.nc file
 
     Parameters:
-    ----------
+    -----------
     gdir: :py:class:`crampon.GlacierDirectory`
         A GlacierDirectory instance.
 
     Returns:
-    -------
+    --------
     None
+
     """
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('cloud_masked'))

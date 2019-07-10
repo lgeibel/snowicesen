@@ -1,6 +1,9 @@
-""" Execute snowicesat
+""" 
+==============
+setup_gdirs.py
+==============
 
-This is the main file to excute snowicesat: 
+This is the main file to excute snowicesen: 
 It inititalizes the Configuration/Parameters file, 
 reads the outlines of the region and creates the Glacier Directories
 (see OGGM: Open Global Glacier Model for Documentation of the Class).
@@ -12,7 +15,7 @@ Cloud Masking, thresholding to remove dark, debris-covered areas).
 After the preprocessing, 3 snow mapping algorithms are performed so
 retrieve the snow covered area and the SLA  on each glacier.
 
-The parameters file is inititalized in as snowicesat_params.cfg. 
+The parameters file is inititalized in as snowicesen_params.cfg. 
 For any other file, the path in cfg.initialite needs to be adapted
 
 The rgidf contains all glaciers on which the snow mapping should be
@@ -47,7 +50,7 @@ log.setLevel('DEBUG')
 cfg.initialize("/scratch_net/vierzack03_third/geibell/snowicesen/snowicesen_params.cfg")
 # Caution: In crampon.utils.GlacierDirectory._init cfg.initialize is
 # called again --> change path there as well! EDIT: only necessary in Windows
-
+    
 if __name__ == '__main__':
     # Shapefile with Glacier Geometries:
     rgidf = gpd.read_file("/scratch_net/vierzack03_third/geibell/snowicesen/data/outlines/rgi_copy_status.shp")

@@ -1,3 +1,13 @@
+"""
+=====
+plots
+=====
+
+A collection of some useful plotting routines (some as entity tasks,
+some as functions)
+
+"""
+
 from __future__ import absolute_import, division
 
 import os
@@ -72,6 +82,7 @@ def plot_results(gdir):
     #    plt.show()
 
 #        plot_cloud_cover(gdir, sentinel_ekstrand_corrected, sentinel_cloud_masked, date)
+        print('Plotting', date.values)
         plot_snow_cover_all(gdir, sentinel_temp, dem_ts, snow_xr, rgb_image, date)
 #    plot_snow_cover_ASMAG(gdir, sentinel, dem_ts, snow_xr, rgb_image)
 
@@ -104,26 +115,29 @@ def plot_snow_cover_all(gdir, sentinel, dem_ts, snow_xr, rgb_image, date):
     plt.subplot(1, 4, 1)
     plt.imshow(rgb_image)
     plt.title('RBG Image')
-
-    plt.subplot(1, 4, 2)
-    snow_xr.sel(time=date, model='asmag').snow_map.plot()
-    plt.contour(dem_ts.isel(time=0,band=0 ).height_in_m.values, cmap='Greens')
+    
+    try:
+        plt.subplot(1, 4, 2)
+        snow_xr.sel(time=date, model='asmag').snow_map.plot()
+        plt.contour(dem_ts.isel(time=0,band=0 ).height_in_m.values, cmap='Greens')
             #   levels=[snow_xr.sel(time=date, model='asmag').SLA.values])
-    plt.title('Asmag Snow Map & SLA')
-    plt.subplot(1, 4, 3)
-    snow_xr.sel(time=date, model='naegeli_orig').snow_map.plot()
-    plt.contour(dem_ts.isel(time=0,band=0).height_in_m.values, cmap='Greens')
+        plt.title('Asmag Snow Map & SLA')
+        plt.subplot(1, 4, 3)
+        snow_xr.sel(time=date, model='naegeli_orig').snow_map.plot()
+        plt.contour(dem_ts.isel(time=0,band=0).height_in_m.values, cmap='Greens')
             #   levels=[snow_xr.sel(time=date, model='naegeli_orig').SLA.values])
-    plt.title('Naegeli Original')
-    plt.subplot(1, 4, 4)
-    snow_xr.sel(time=date, model='naegeli_improv').snow_map.plot()
-    plt.contour(dem_ts.isel(time=0,band=0 ).height_in_m.values, cmap='Greens')
+        plt.title('Naegeli Original')
+        plt.subplot(1, 4, 4)
+        snow_xr.sel(time=date, model='naegeli_improv').snow_map.plot()
+        plt.contour(dem_ts.isel(time=0,band=0 ).height_in_m.values, cmap='Greens')
              #  levels=[snow_xr.sel(time=date, model='naegeli_improv').SLA.values])
-    plt.title('Naegeli Improved Method')
-    plt.suptitle(str(gdir.name + " - " + gdir.id + " on " + str(date.values) ), fontsize=18)
-    plt.show(fig1)
-    plt.savefig(gdir.get_filepath('plt_all'), bbox_inches='tight')
-    print(date)
+        plt.title('Naegeli Improved Method')
+        plt.suptitle(str(gdir.name + " - " + gdir.id + " on " + str(date.values) ), fontsize=18)
+        plt.show(fig1)
+        plt.savefig(gdir.get_filepath('plt_all'), bbox_inches='tight')
+        print(date)
+    except ValueError:
+        return
 
 
 

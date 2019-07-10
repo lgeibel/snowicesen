@@ -1,3 +1,11 @@
+""" 
+========
+workflow
+========
+Workflow, used to setup the glacier directories
+
+"""
+
 from __future__ import absolute_import, division
 import salem
 import os
@@ -25,7 +33,7 @@ def init_glacier_regions_snowicesen(shapedf=None, reset=False, force=False, all_
     """
     Set up or take over GlacierDirectories. The first task (always!).
 
-    The main  function is copied from Crampon that copied it froom OGGM,
+    The main  function is copied from Crampon that copied it from OGGM,
     but it has been simplified so that it only uses one input 
     (currently SwissALti3d) for the DEM input and only calculates 
     the necessary parts of it.

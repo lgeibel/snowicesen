@@ -1,4 +1,9 @@
-"""  Configuration file and options
+"""  
+======
+cfg.py
+======
+Configuration file and options, very similar to CRAMPON.cfg with 
+some added globals.
 
 A number of globals are defined here to be available everywhere.
 

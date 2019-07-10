@@ -1,5 +1,10 @@
 """
-A collection of some general functions and the downloading function
+=====
+utils
+=====
+A collection of the functions used to automatically find, download 
+and preprocess the sentinel data as well as some other general functions
+
 """
 
 from __future__ import absolute_import, division

@@ -1,5 +1,13 @@
-from __future__ import absolute_import, division
+""" 
+============
+create_gdirs
+============
 
+Called by init_glacier_regions after creating the 
+glacier directories to write the data into each directory
+
+"""
+from __future__ import absolute_import, division
 from distutils.version import LooseVersion
 from salem import Grid, wgs84
 import os
