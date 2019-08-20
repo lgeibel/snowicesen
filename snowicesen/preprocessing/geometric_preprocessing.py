@@ -40,8 +40,8 @@ def crop_satdata_to_glacier(gdir):
     None
     """
 
-    crop_sentinel_to_glacier(gdir)
-    crop_metadata_to_glacier(gdir)
+   # crop_sentinel_to_glacier(gdir)
+   # crop_metadata_to_glacier(gdir)
     crop_dem_to_glacier(gdir)
 
 
@@ -150,14 +150,16 @@ def crop_dem_to_glacier(gdir):
     # Project DEM to same crs as sentinel tiles:
 
     # get crs from sentinel tile:
-    with rasterio.open(os.path.join(os.path.join(os.path.join(
-            cfg.PATHS['working_dir'],
-            'cache', str(cfg.PARAMS['date'][0]),
-            'mosaic')), os.listdir(os.path.join(os.path.join(
-                 cfg.PATHS['working_dir'],
-                'cache', str(cfg.PARAMS['date'][0]),
-            'mosaic')))[1])) as sentinel:
-        dst_crs = sentinel.crs
+    # TODO: something wrong with this, currently the DEM needs to have 
+    # the same projection as the sentinel images 
+   # with rasterio.open(os.path.join(os.path.join(os.path.join(
+   #         cfg.PATHS['working_dir'],
+   #         'cache', str(cfg.PARAMS['date'][0]),
+   #         'mosaic')), os.listdir(os.path.join(os.path.join(
+   #              cfg.PATHS['working_dir'],
+   #             'cache', str(cfg.PARAMS['date'][0]),
+   #         'mosaic')))[1])) as sentinel:
+   #     dst_crs = sentinel.crs
     dst_crs = 'EPSG:32632'
 
     for band in img_list:
@@ -288,7 +290,7 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
             dst_transform, width, height = calculate_default_transform(
                     src_crs, local_crs, out_image.shape[1],
                     out_image.shape[2], *src1.bounds)
-
+            
             out_meta.update({
                     'crs': local_crs,
                     'transform': dst_transform,
@@ -348,7 +350,11 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
         # Convert all_bands from DataArray to Dataset
         all_bands = all_bands.to_dataset(name=var_name)
         if not all_bands.time.values in existing.time.values:
-            appended = xr.concat([existing, all_bands], dim='time')
+            try:
+                appended = xr.concat([existing, all_bands], dim='time')
+            except MemoryError:
+                print("Memory Error on", gdir, ". Skipping this entry")
+                return
             existing.close()
             appended.attrs = all_bands_attrs
             appended.attrs['pyproj_srs'] = rasterio.crs.CRS.to_proj4(src1.crs)
@@ -363,6 +369,17 @@ def crop_geotiff_to_glacier(gdir, img_list, dim_name, dim_label,
     # Remove cropped_cache.tif file:
     os.remove(gdir.get_filepath('cropped_cache'))
     os.remove(gdir.get_filepath('outlines_proj_tile'))
+
+    #print("dst_transform =", dst_transform)
+    #print("out_transform=", out_transform)
+    
+    #sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+    #plt.imshow(sentinel.sel(band='B08', time = cfg.PARAMS['date'][0]).img_values.values)
+    #plt.show()
+    
+
+
+    
 
 
 

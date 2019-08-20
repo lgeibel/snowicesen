@@ -26,6 +26,8 @@ import xml.etree.ElementTree as ET
 import numpy as np
 from crampon import GlacierDirectory
 from retrying import retry
+import matplotlib.pyplot as plt
+import matplotlib
 log = logging.getLogger(__name__)
 print(cfg.PATHS)
 
@@ -373,24 +375,24 @@ def download_all_tiles(glacier, tile, use_tiles = True,  clear_cache = False, cl
             print('Extracting SolarAngles')
             # Extract Metadata for each Tile
             # list of all metadata files for this date
-            meta_list = glob.glob(os.path.join(
-                            cfg.PATHS['working_dir'], 'cache',
-                             str(cfg.PARAMS['date'][0]), '**',
-                                         'GRANULE', '**', 'MTD_TL.xml'),
-                                  recursive=False)
-            id = 0
-            for meta_name in meta_list:
-                # Read eaach tile from .xml to GeoTIff and reproject to
-            #  10 Meter resolution
-                solar_zenith, solar_azimuth = extract_metadata(meta_name)
-                
-                resample_meta(solar_zenith, solar_azimuth, meta_name, id)
-                id += 1
-            print(solar_zenith.shape)
-            mean_zenith = np.mean(solar_zenith, axis = (0,1))
-            mean_azimuth = np.mean(solar_azimuth, axis = (0,1))
-            cfg.PARAMS['zenith_mean'] = mean_zenith
-            cfg.PARAMS['azimuth_mean'] = mean_azimuth
+#            meta_list = glob.glob(os.path.join(
+#                            cfg.PATHS['working_dir'], 'cache',
+#                             str(cfg.PARAMS['date'][0]), '**',
+#                                         'GRANULE', '**', 'MTD_TL.xml'),
+#                                  recursive=False)
+#            id = 0
+#            for meta_name in meta_list:
+#                # Read eaach tile from .xml to GeoTIff and reproject to
+#            #  10 Meter resolution
+#                solar_zenith, solar_azimuth = extract_metadata(meta_name)
+#                
+#                resample_meta(solar_zenith, solar_azimuth, meta_name, id)
+#                id += 1
+#            print(solar_zenith.shape)
+#            mean_zenith = np.mean(solar_zenith, axis = (0,1))
+#            mean_azimuth = np.mean(solar_azimuth, axis = (0,1))
+#            cfg.PARAMS['zenith_mean'] = mean_zenith
+#            cfg.PARAMS['azimuth_mean'] = mean_azimuth
 
 
             ## Create empty list for datafile
@@ -466,8 +468,8 @@ def download_all_tiles(glacier, tile, use_tiles = True,  clear_cache = False, cl
             # small anyways)
  #           cfg.PARAMS['zenith_mean'] = mean_zenith
  #           cfg.PARAMS['azimuth_mean'] = mean_azimuth
-            print(cfg.PARAMS['zenith_mean'])
-            print(cfg.PARAMS['azimuth_mean'])
+ #           print(cfg.PARAMS['zenith_mean'])
+ #           print(cfg.PARAMS['azimuth_mean'])
 
 
             # -------  end of Metadata
@@ -687,3 +689,74 @@ def assign_bc(elev_grid):
     z_bc[-1, -1] = elev_grid[-1, 0]
 
     return z_bc
+
+
+
+
+def two_d_scatter(x_as, x_na, x_nai,y_as, y_na, y_nai,z_as, z_na, z_nai, x_name, y_name, z_name, figure_id):
+    """
+    Create 2 - d Scatter Plots with third dimension in color scale.
+    Used to plot validation results (kappa, SLA) against snow_cover, area,
+    cloud_cover, etc. of the validation data set in different combinations
+
+    Parameters:
+    -----------
+    x_as: list: x-values returned by the ASMAG-Algorithm
+    x_na: list: x-values returned by the algorithm by naegeli
+    x_nai: list: x- values returned by the improved version of the naegeli-algorithm
+    .
+    .
+    .
+    x_name: str: name of x-variable
+    .
+    .
+    figure_id: int: id of figure to be plotted
+    """
+    plt.figure(figure_id,figsize=(15,5))
+    plt.suptitle(str(z_name+ 'in dependence on '+ x_name+ ' and '+ y_name))
+    plt.subplot(1,3,1)
+   
+    cmap = matplotlib.cm.get_cmap('YlGnBu')
+    normalize = matplotlib.colors.Normalize(vmin=min(z_as),
+            vmax = max(z_as))
+    colors = [cmap(normalize(value)) for value in z_as]
+    plt.scatter(x_as, y_as, s=10,color=colors,linewidth=0.5, edgecolor='blue')
+    sm = matplotlib.cm.ScalarMappable(norm=normalize, cmap=cmap)
+    sm.set_array([])
+    cbar = plt.colorbar(sm)
+    cbar.set_label(z_name)
+    plt.xlim(0,1)
+   
+    plt.ylim(0,1)
+    plt.xlabel(x_name)
+    plt.ylabel(y_name)
+    plt.grid()
+    plt.title('ASMAG')
+   
+    plt.subplot(1,3,2)
+    cmap = matplotlib.cm.get_cmap('YlOrRd')
+    normalize = matplotlib.colors.Normalize(vmin=min(z_na),
+            vmax = max(z_na))
+    colors = [cmap(normalize(value)) for value in z_na]
+    plt.scatter(x_na, y_na, s=10,color=colors,linewidth=0.5, edgecolor='red')
+    sm = matplotlib.cm.ScalarMappable(norm=normalize, cmap=cmap)
+    sm.set_array([])
+    cbar = plt.colorbar(sm)
+    cbar.set_label(z_name)
+    plt.xlim(0,1)
+    
+    plt.ylim(0,1)
+    plt.xlabel(x_name)
+    plt.ylabel(y_name)
+    plt.grid()
+    plt.title('Naegeli')
+   
+    plt.subplot(1,3,3)
+   
+    cmap = matplotlib.cm.get_cmap('YlGn')
+    normalize = matplotlib.colors.Normalize(vmin=min(z_nai),
+             vmax = max(z_nai))
+    colors = [cmap(normalize(value)) for value in z_nai]
+    plt.scatter(x_na, y_na, s=10,color=colors,linewidth=0.5, edgecolor='green')
+    sm = matplotlib.cm.ScalarMappable(norm=normalize, cmap=cmap)
+   

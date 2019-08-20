@@ -22,6 +22,7 @@ from s2cloudless import S2PixelCloudDetector
 import matplotlib.pyplot as plt
 import rasterio
 import os
+import math
 try:
     # rasterio V > 1.0
     from rasterio.merge import merge as merge_tool
@@ -251,7 +252,7 @@ def cloud_masking(gdir):
     except FileNotFoundError:
         # Check if uncorrected sentinel file exists: 
         try:
-            sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+            sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))#, chunks={'time':10})
         except FileNotFoundError: # No data exists at all
             # 1st time step: no data for this glacier available
             log.info('No data for this glacier - Abort Cloud Masking') 
@@ -265,7 +266,7 @@ def cloud_masking(gdir):
     except KeyError:
         # Check if uncorrected Sentinel File exists/has data: 
         try: 
-            sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
+            sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))#,chunks={'time':10} )
             wms_bands = sentinel.sel(
             band=['B01', 'B02', 'B04','B05','B08','B8A','B09', 'B10', 'B11', 'B12'],
             time=cfg.PARAMS['date'][0])\
@@ -276,14 +277,16 @@ def cloud_masking(gdir):
             return
 
     # rearrange dimensions, goal :[height, width, channels].
-    #  now: [channels, height, width] and correct into to float (factor 10000)
+    #  now: [channels, height, width] and correct into  float (divide by factor 10000)
     wms_bands = [np.transpose(wms_bands/10000, (1,2,0)) for _ in range(1)]
     cloud_masks = cloud_detector.get_cloud_masks(np.array(wms_bands))
 
 #    cloud_probability = cloud_detector.get_cloud_probability_maps(np.array(wms_bands))
 #    plot_cloud_mask(cloud_probability ,wms_bands)
+    
+##### Deal with MemoryError for large files: remove last entry
+    #sentinel=sentinel.isel(time=range(0,sentinel.time.values.size-1))
 
-    # Apply cloudmask to scene:
     for band_id in sentinel['band'].values:
         band_array = sentinel.sel(band=[band_id],
                 time = cfg.PARAMS['date'][0]).img_values.values
@@ -304,14 +307,45 @@ def cloud_masking(gdir):
             log.info('Cloud COver over 70% - abort Cloud Masking')
             return
         band_array = band_array[0,:,:]
-        sentinel['img_values'].loc[(dict(band=band_id, time=cfg.PARAMS['date'][0]))] = band_array
+
+        if os.path.isfile(gdir.get_filepath('cloud_masked')):
+            cloud_mask = xr.open_dataset(gdir.get_filepath('cloud_masked'))
+            cloud_mask_new = cloud_mask.copy(deep=True)
+            cloud_mask_new = cloud_mask_new.isel(time=0)
+            cloud_mask_new.coords['time']=np.array([cfg.PARAMS['date'][0]])
+            cloud_mask = xr.concat([cloud_mask, cloud_mask_new], dim = 'time')
+            os.remove(gdir.get_filepath('cloud_masked'))
+        else:
+            if not 'cloud_mask' in locals():
+                # File does not exist: Create new as copy from sentinel.nc file:
+                sentinel_copy = sentinel.copy(deep=True)
+                # Remove all dates except current:
+                sentinel_copy = sentinel_copy.drop([
+                    time_id for time_id in sentinel['time'].values][:-1],
+                        dim='time').squeeze('time', drop = True)
+                sentinel_copy = sentinel_copy.assign_coords(
+                        time=cfg.PARAMS['date'][0])
+                sentinel_copy = sentinel_copy.expand_dims('time')
+                cloud_mask = sentinel_copy.copy(deep=True)
+        cloud_mask['img_values'].loc[(
+                     dict(band = band_id, time=cfg.PARAMS['date'][0]))] \
+                    = np.ones([band_array.shape[0], band_array.shape[1]])
+        
+        cloud_mask['img_values'].loc[(
+                    dict(band=band_id, time=cfg.PARAMS['date'][0]))] \
+                    = band_array
 
     print("Cloud cover: ", cloud_cover)
 
-
     # Write Updated DataSet to file
-    sentinel.to_netcdf(gdir.get_filepath('cloud_masked'))
-    sentinel.close()
+    cloud_mask.to_netcdf(gdir.get_filepath('cloud_masked'), 'w')
+    cloud_mask.close()
+
+   # sentinel= xr.open_dataset(gdir.get_filepath('cloud_masked'))
+   # print(sentinel)
+   # sentinel.sel(time=cfg.PARAMS['date'][0], band = 'B08').img_values.plot()
+   # cfg.PARAMS['count']=cfg.PARAMS['count'] +1
+    #plt.show()
 
 def plot_cloud_mask(mask, bands, figsize=(15, 15), fig=None):
     """
@@ -327,11 +361,11 @@ def plot_cloud_mask(mask, bands, figsize=(15, 15), fig=None):
 
 @entity_task(log)
 def remove_sides(gdir):
-    """ Thresholding to remove dark sides
+    """ Thresholding to remove dark/debris covered sides
 
     Removes dark sides of glaciers that the glacier mask sometimes does
     not consider and that would lead to misclassification. Thresholding
-    of is based on NDSI, all values with NDSI < 0 are not considered in
+     is based on NDSI, all values with NDSI < 0.2 are not considered in
     the further classification
 
     Processed bands stored in sentinel_temp.nc file
@@ -372,16 +406,37 @@ def remove_sides(gdir):
     # Write into netCDF file again
     for band_id in sentinel['band'].values:
         band_array[band_id][mask == False] = 0
-        sentinel['img_values'].loc[
-            (dict(band=band_id, time=cfg.PARAMS['date'][0]))] \
-            = band_array[band_id]*10000
 
-        time_id = cfg.PARAMS['date'][0]
+        if os.path.isfile(gdir.get_filepath('sentinel_temp')):
+            cloud_mask = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
+            cloud_mask_new = cloud_mask.copy(deep=True)
+            cloud_mask_new = cloud_mask_new.isel(time=0)
+            cloud_mask_new.coords['time']=np.array([cfg.PARAMS['date'][0]])
+            cloud_mask = xr.concat([cloud_mask, cloud_mask_new], dim = 'time')
+            os.remove(gdir.get_filepath('sentinel_temp'))
+        else:
+            if not 'cloud_mask' in locals():
+                # File does not exist: Create new as copy from sentinel.nc file:
+                sentinel_copy = sentinel.copy(deep=True)
+                # Remove all dates except current:
+                sentinel_copy = sentinel_copy.drop([
+                    time_id for time_id in sentinel['time'].values][:-1],
+                        dim='time').squeeze('time', drop = True)
+                sentinel_copy = sentinel_copy.assign_coords(
+                        time=cfg.PARAMS['date'][0])
+                sentinel_copy = sentinel_copy.expand_dims('time')
+                cloud_mask = sentinel_copy.copy(deep=True)
+        cloud_mask['img_values'].loc[(
+                     dict(band = band_id, time=cfg.PARAMS['date'][0]))] \
+                    = band_array[band_id]*10000
 
+    print("Cloud cover: ", cloud_cover)
 
     # Write Updated DataSet to file
-    sentinel.to_netcdf(gdir.get_filepath('sentinel_temp'), 'w')
-    sentinel.close()
-#    shutil.move(gdir.get_filepath('sentinel_temp'), gdir.get_filepath('sentinel'))
+    cloud_mask.to_netcdf(gdir.get_filepath('sentinel_temp'), 'w')
+    cloud_mask.close()
+
+           
+
 
 

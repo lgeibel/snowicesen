@@ -58,8 +58,8 @@ def plot_results(gdir):
 
     try:
         sentinel_temp = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
-        sentinel_cloud_masked = xr.open_dataset(gdir.get_filepath('cloud_masked'))
-        sentinel_ekstrand_corrected = xr.open_dataset(gdir.get_filepath('ekstrand'))
+#        sentinel_cloud_masked = xr.open_dataset(gdir.get_filepath('cloud_masked'))
+#        sentinel_ekstrand_corrected = xr.open_dataset(gdir.get_filepath('ekstrand'))
         sentinel = xr.open_dataset(gdir.get_filepath('sentinel'))
         dem_ts = xr.open_dataset(gdir.get_filepath('dem_ts'))
         snow_xr = xr.open_dataset(gdir.get_filepath('snow_cover'))
@@ -70,9 +70,9 @@ def plot_results(gdir):
     for date in snow_xr.time:
         print(date.values)
         #### TODO: ------ USE SENTINEL_TMP and snow_xr for loop!!!!! ------
-        b04 = sentinel_ekstrand_corrected.sel(band='B04', time=date).img_values.values / 10000
-        b03 = sentinel_ekstrand_corrected.sel(band='B03', time=date).img_values.values / 10000
-        b02 = sentinel_ekstrand_corrected.sel(band='B02', time=date).img_values.values / 10000
+        b04 = sentinel_temp.sel(band='B04', time=date).img_values.values / 10000
+        b03 = sentinel_temp.sel(band='B03', time=date).img_values.values / 10000
+        b02 = sentinel_temp.sel(band='B02', time=date).img_values.values / 10000
 
         rgb_image = np.array([b04, b03, b02]).transpose((1, 2, 0))
     # Cut value > 1 to 1:
@@ -83,8 +83,10 @@ def plot_results(gdir):
 
 #        plot_cloud_cover(gdir, sentinel_ekstrand_corrected, sentinel_cloud_masked, date)
         print('Plotting', date.values)
+        print(sentinel_temp.attrs)
         plot_snow_cover_all(gdir, sentinel_temp, dem_ts, snow_xr, rgb_image, date)
-#    plot_snow_cover_ASMAG(gdir, sentinel, dem_ts, snow_xr, rgb_image)
+        plot_snow_cover_ASMAG(gdir, sentinel, dem_ts, snow_xr, rgb_image)
+
 
 def plot_snow_cover_all(gdir, sentinel, dem_ts, snow_xr, rgb_image, date):
     """Plot Snow Mask and SLA as retrieved with ASMAG-
@@ -210,7 +212,7 @@ def plot_snow_cover_ASMAG(gdir, sentinel, dem_ts, snow_xr, rgb_image):
     """
     # get NIR band as np array
 
-    nir = sentinel.sel(band='B08', time=cfg.PARAMS['date'][0]).img_values.values / 10000
+    nir = sentinel.isel(band=7, time=0).img_values.values / 10000
     if nir[nir > 0].size > 0:
         try:
             val = filters.threshold_otsu(nir[nir > 0])
@@ -227,16 +229,21 @@ def plot_snow_cover_ASMAG(gdir, sentinel, dem_ts, snow_xr, rgb_image):
         bins_center = 0
         hist = 0
 
-    snow = snow_xr.sel(model='asmag', time=cfg.PARAMS['date'][0]).snow_map.values
+    snow = snow_xr.isel(model=0,time=0).snow_map.values
     snow = np.ma.array(snow)
     # mask values that are not = 1, plot only snow:
     snow_masked = np.ma.masked_where(snow != 1, snow)
 
+    print(val)
     fig1 = plt.figure(figsize=(15, 10))
     plt.subplot(1, 3, 1)
     plt.plot(bins_center, hist, lw=2)
     plt.axvline(val, color='k', ls='--')
     plt.title('Histogram and Otsu-Treshold')
+    plt.xlabel('Data Value')
+    plt.ylabel('Frequency')
+    plt.title('Otsu Treshold = %1.3f' % val)
+    plt.grid()
 
     plt.subplot(1, 3, 2)
     plt.imshow(nir, cmap='gray')
@@ -245,7 +252,7 @@ def plot_snow_cover_ASMAG(gdir, sentinel, dem_ts, snow_xr, rgb_image):
     plt.subplot(1, 3, 3)
     plt.imshow(nir, cmap='gray')
     plt.imshow(snow_masked, cmap='Greys')
-    plt.title('Snow Covered Area after Ostu-Tresholding')
+    plt.title('Snow Covered Area after Otsu-Tresholding')
     plt.suptitle(str(gdir.name + " - " + gdir.id), fontsize=18)
     plt.show(fig1)
     plt.savefig(gdir.get_filepath('plt_otsu'), bbox_inches='tight')

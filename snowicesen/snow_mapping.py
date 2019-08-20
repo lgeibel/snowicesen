@@ -91,15 +91,15 @@ def asmag_snow_mapping(gdir):
                 # Manually set as no snow
                 log.error('Exceptional case: all pixel cloud-covered but not detected correctly')
                 val = 1
-                bins_center = 0
-                hist = 0
+               # bins_center = 0
+               # hist = 0
 
-            hist, bins_center = exposure.histogram(nir[nir > 0])
+        #    hist, bins_center = exposure.histogram(nir[nir > 0])
         else:
             log.error('No pixels snow covered')
             val = 1
-            bins_center = 0
-            hist = 0
+           # bins_center = 0
+           # hist = 0
             # no pixels are snow covered
 
         snow = nir > val
@@ -148,7 +148,7 @@ def asmag_snow_mapping(gdir):
                     snow
 
             # Assign NaN Value:
-            snow_xr = snow_xr.where(snow_xr['snow_map']!=0)
+            #snow_xr = snow_xr.where(snow_xr['snow_map']!=0)
         except ValueError:
             # TODO: very strange bug on RGI50-11A14C03-1, after 3rd day:
             # dimensions of "snow" and "sentinel" are different?
@@ -166,7 +166,7 @@ def asmag_snow_mapping(gdir):
         snow_xr['SLA'].loc[dict(model='naegeli_improv', time = cfg.PARAMS['date'][0])]= 0
        
 
-        snow_new = snow_xr.copy()
+        snow_new = snow_xr.copy(deep=True)
         #try:
         #    # safe dataset to file
         #    snow_new.to_netcdf(gdir.get_filepath('snow_cover'), 'w')
@@ -182,8 +182,15 @@ def asmag_snow_mapping(gdir):
         snow_new.close()
         log.debug('SLA 1 = {}'.format(SLA))
         print("SLA1 = ",SLA)
+        #sentinel.sel(time=cfg.PARAMS['date'][0],band='B03').img_values.plot()
+        #snow_new = xr.open_dataset(gdir.get_filepath('snow_cover'))
+        #print(snow_new)
+        #day = cfg.PARAMS['date'][0]
+        #print(day)
+        #snow_new.sel(time=cfg.PARAMS['date'][0], model='asmag').snow_map.plot()       
+        #plt.show()
 
-    except:
+    except FileNotFoundError:
         print("Error occured, quitting")
         return
 
@@ -1052,7 +1059,8 @@ def primary_surface_type_evaluation(gdir):
             # (assumed to be snow line altitude)
 
         return snow, ambig, elevation_grid, albedo_ind
-    except:
+    except FileNotFoundError:
+        print("Catching OverallError")
         return
 
 def albedo_knap(sentinel):

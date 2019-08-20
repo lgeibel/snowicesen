@@ -67,8 +67,8 @@ if __name__ == '__main__':
 #    rgidf = rgidf.sample(n=10)
 
     # Only keep those glaciers to have smaller dataset
-#    rgidf = rgidf[rgidf.RGIId.isin([
-#        'RGI50-11.B9004'])]
+#    rgidf = rgidf[~rgidf.RGIId.isin([
+#        'RGI50-11.E4508-1'])]
 #        'RGI50-11.A54L36n', # Fiescher (Shaded)
 #        'RGI50-11.B4312n-1',  # Rhone
 #        'RGI50-11.B5616n-1',  # Findelen
@@ -109,7 +109,7 @@ if __name__ == '__main__':
                                                         # sentinel.nc,
                                                         #solar_angles.nc
                                                         # dem_ts.nc
-                         tasks.ekstrand_correction, # output: ekstrand.nc
+                        # tasks.ekstrand_correction, # output: ekstrand.nc
                          tasks.cloud_masking, # ouput: cloud_masked.nc
                          tasks.remove_sides, # output: sentinel_temp.nc
                          tasks.asmag_snow_mapping,
