@@ -713,20 +713,23 @@ def two_d_scatter(x_as, x_na, x_nai,y_as, y_na, y_nai,z_as, z_na, z_nai, x_name,
     figure_id: int: id of figure to be plotted
     """
     plt.figure(figure_id,figsize=(15,5))
+    plt.rcParams.update({"font.size": 12})
     plt.suptitle(str(z_name+ 'in dependence on '+ x_name+ ' and '+ y_name))
     plt.subplot(1,3,1)
+
    
     cmap = matplotlib.cm.get_cmap('YlGnBu')
     normalize = matplotlib.colors.Normalize(vmin=min(z_as),
             vmax = max(z_as))
     colors = [cmap(normalize(value)) for value in z_as]
-    plt.scatter(x_as, y_as, s=10,color=colors,linewidth=0.5, edgecolor='blue')
+    plt.scatter(x_as, y_as, s=20,color=colors,linewidth=0.5, edgecolor='blue')
     sm = matplotlib.cm.ScalarMappable(norm=normalize, cmap=cmap)
     sm.set_array([])
     cbar = plt.colorbar(sm)
     cbar.set_label(z_name)
+    #plt.xlim([0.01, 1.1])
     plt.xlim(0,1)
-   
+   # plt.xscale('log')
     plt.ylim(0,1)
     plt.xlabel(x_name)
     plt.ylabel(y_name)
@@ -738,12 +741,13 @@ def two_d_scatter(x_as, x_na, x_nai,y_as, y_na, y_nai,z_as, z_na, z_nai, x_name,
     normalize = matplotlib.colors.Normalize(vmin=min(z_na),
             vmax = max(z_na))
     colors = [cmap(normalize(value)) for value in z_na]
-    plt.scatter(x_na, y_na, s=10,color=colors,linewidth=0.5, edgecolor='red')
+    plt.scatter(x_na, y_na, s=20,color=colors,linewidth=0.5, edgecolor='red')
     sm = matplotlib.cm.ScalarMappable(norm=normalize, cmap=cmap)
     sm.set_array([])
     cbar = plt.colorbar(sm)
     cbar.set_label(z_name)
     plt.xlim(0,1)
+    #plt.xscale('log')
     
     plt.ylim(0,1)
     plt.xlabel(x_name)
@@ -757,6 +761,18 @@ def two_d_scatter(x_as, x_na, x_nai,y_as, y_na, y_nai,z_as, z_na, z_nai, x_name,
     normalize = matplotlib.colors.Normalize(vmin=min(z_nai),
              vmax = max(z_nai))
     colors = [cmap(normalize(value)) for value in z_nai]
-    plt.scatter(x_na, y_na, s=10,color=colors,linewidth=0.5, edgecolor='green')
+    plt.scatter(x_na, y_na, s=20,color=colors,linewidth=0.5, edgecolor='green')
     sm = matplotlib.cm.ScalarMappable(norm=normalize, cmap=cmap)
+    sm.set_array([])
+    cbar = plt.colorbar(sm)
+    cbar.set_label(z_name)
+    plt.xlim(0,1)
+   # plt.xscale('log')
+    
+    plt.ylim(0,1)
+    plt.xlabel(x_name)
+    plt.ylabel(y_name)
+    plt.grid()
+    plt.title('Naegeli Improved')
+    plt.tight_layout()
    

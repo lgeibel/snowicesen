@@ -19,7 +19,8 @@ import numpy as np
 import snowicesen.utils as utils
 from snowicesen.utils import download_all_tiles
 from oggm.workflow import execute_entity_task
-from datetime import timedelta
+from datetime import timedelta, date
+from datetime import datetime
 from snowicesen.utils import datetime_to_int, int_to_datetime, extract_metadata
 import matplotlib.pyplot as plt
 import matplotlib
@@ -28,6 +29,8 @@ import pandas as pd
 import numpy.ma as ma
 import richdem as rd
 import itertools
+import pickle
+from scipy import stats
 
 logging.basicConfig(format='%(asctime)s: %(name)s: %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S', level=logging.DEBUG)
@@ -105,8 +108,11 @@ if __name__ == '__main__':
     SLA_nai_arr = []
 
     area_arr =[]
+    extent_arr =[]
+    aspect_arr = []
+    doy_arr = []
     vert_ext_arr =[]
-
+    scenes_arr =[]
     entries = 0
 
     for glacier in gdirs:
@@ -123,7 +129,7 @@ if __name__ == '__main__':
             # Skip this glacier if no validation data set is available
             print('No data for comparison')
             continue
-       # print(snow_man)
+        
         # sum up all kappas
         kappa_asmag_sum = kappa_asmag_sum+ snow_man.kappa_asmag.sum(dim='time').values
         kappa_naegeli_sum = kappa_naegeli_sum+ snow_man.kappa_naegeli_orig.sum(dim='time').values
@@ -148,6 +154,11 @@ if __name__ == '__main__':
             except KeyError:
                 continue
 
+        # write Day of Year (doy) into array:
+            end_date = date(int(str(day)[0:4]), int(str(day)[4:6]),
+                    int(str(day)[6:8]))
+            doy = end_date.timetuple().tm_yday
+            doy_arr.append(doy)
         # Write all kappas into an array:
             kappa_as_arr.append(snow_man.sel(time=day).kappa_asmag.values)
             kappa_na_arr.append(snow_man.sel(time=day).kappa_naegeli_orig.values)
@@ -184,16 +195,26 @@ if __name__ == '__main__':
 
             # Get average slope
             dem_ts = dem.isel(time=0,band=0).height_in_m.values
+            # Get altitude extent:
+            print(dem_ts[dem_ts < 5000].max(), dem_ts[dem_ts>0].min())
+            extent = dem_ts[dem_ts < 5000].max()-dem_ts[dem_ts > 0].min()
+            print(extent)
             z_bc = utils.assign_bc(dem_ts)
             dx = 10
             # Compute finite differences
             slope_x = (z_bc[1:-1, 2:]-z_bc[1:-1,:-2])/(2*dx)
             slope_y = (z_bc[2:, 1:-1]-z_bc[:-2,1:-1])/(2*dx)
             slope = np.arctan(np.sqrt(slope_x**2+slope_y**2))
+            aspect = np.arctan2(slope_y, slope_x)
+
             # Average slope in degrees
             slope = np.degrees(np.mean(slope[slope>0]))
+            # Average Aspect in degreed:
+            aspect = np.degrees(np.mean(aspect[aspect>0]))
             #rint(slope)
             slope_arr.append(slope)
+            extent_arr.append(extent)
+            aspect_arr.append(aspect)
         
 
 
@@ -214,6 +235,8 @@ if __name__ == '__main__':
         C_naegeli_improv[3]=C_naegeli_improv[3]+ snow_man.naegeli_improv_d.sum(dim='time').values
 
     #####   PLOTS: #####
+
+
     # Snow Cover vs. Kappa:
     #print("manual :",SLA_man_arr)
     #print("ASMAG  :", SLA_as_arr)
@@ -341,13 +364,13 @@ if __name__ == '__main__':
 
 
     # Cloud Cover vs. Kappa
-    print(len(cloud_cover_arr), len(kappa_as_arr))
-    z_as = np.polyfit(cloud_cover_arr, kappa_as_arr_cloud,1)
-    p_as = np.poly1d(z_as)
-    z_na = np.polyfit(cloud_cover_arr, kappa_na_arr_cloud,1)
-    p_na = np.poly1d(z_na)
-    z_nai = np.polyfit(cloud_cover_arr, kappa_nai_arr_cloud,1)
-    p_nai = np.poly1d(z_nai)
+ #   print(len(cloud_cover_arr), len(kappa_as_arr))
+ #   z_as = np.polyfit(cloud_cover_arr, kappa_as_arr_cloud,1)
+ #   p_as = np.poly1d(z_as)
+ #   z_na = np.polyfit(cloud_cover_arr, kappa_na_arr_cloud,1)
+ #   p_na = np.poly1d(z_na)
+ #   z_nai = np.polyfit(cloud_cover_arr, kappa_nai_arr_cloud,1)
+ #   p_nai = np.poly1d(z_nai)
 
 
     plt.figure(3, figsize=(15,5))
@@ -355,7 +378,7 @@ if __name__ == '__main__':
     plt.title('Cohens Kappa vs Cloud Cover')
     plt.subplot(1,3,1)
     plt.scatter(cloud_cover_arr, kappa_as_arr_cloud, s=10)
-    plt.plot(cloud_cover_arr, p_as(cloud_cover_arr), 'black')
+#    plt.plot(cloud_cover_arr, p_as(cloud_cover_arr), 'black')
     plt.ylim(0,1)
     plt.xlim(left=0)
     plt.xlabel('Cloud Cover')
@@ -364,7 +387,7 @@ if __name__ == '__main__':
     plt.title('ASMAG')
     plt.grid()
     plt.subplot(1,3,2)
-    plt.plot(cloud_cover_arr, p_na(cloud_cover_arr), 'black')
+#    plt.plot(cloud_cover_arr, p_na(cloud_cover_arr), 'black')
     plt.scatter(cloud_cover_arr, kappa_na_arr_cloud, s=10, color= 'red')
     plt.xlim(left =0)
     plt.ylim(0,1)
@@ -374,7 +397,7 @@ if __name__ == '__main__':
     plt.grid()
     plt.title('Naegeli')
     plt.subplot(1,3,3)
-    plt.plot(cloud_cover_arr, p_nai(cloud_cover_arr), 'black')
+#    plt.plot(cloud_cover_arr, p_nai(cloud_cover_arr), 'black')
     plt.scatter(cloud_cover_arr, kappa_nai_arr_cloud, s=10,color= 'green')
     plt.xlim(left =0)
     plt.ylim(0,1)
@@ -413,6 +436,17 @@ if __name__ == '__main__':
 
     
     # SLA vs. SLA_man
+    z_as, intercept =  np.polyfit(SLA_man_arr, SLA_as_arr,1)
+    _,_,r_val_as,_,_ = stats.linregress(SLA_man_arr, SLA_as_arr)
+    p_as = np.poly1d(z_as)
+    z_na, intercept = np.polyfit(SLA_man_arr, SLA_na_arr,1)
+    _,_,r_val_na,_,_ = stats.linregress(SLA_man_arr, SLA_na_arr)
+    p_na = np.poly1d(z_na)
+    z_nai, intercept = np.polyfit(SLA_man_arr, SLA_nai_arr,1)
+    _,_,r_val_nai,_,_ = stats.linregress(SLA_man_arr, SLA_nai_arr)
+    p_nai = np.poly1d(z_nai)
+
+
     plt.figure(5, figsize=(15,5))
     plt.suptitle('Snow Line Altitude Observed vs. Modeled')
     plt.subplot(1,3,1)
@@ -427,12 +461,15 @@ if __name__ == '__main__':
     cbar.set_label('Kappa')
 
 
-    plt.plot([0,4000],[0,4000])    
+    plt.plot([0,4000],[0,4000]) 
+    print(p_as(SLA_man_arr))
+    plt.plot( SLA_man_arr, p_as(SLA_man_arr), 'black', label ='R2 = %.3f'.format(r_val_as**2))
     plt.ylim((2000,3600))
     plt.xlim((2000,3600))
     plt.xlabel('SLA Manual')
     plt.ylabel('SLA Calculated')
     plt.title('ASMAG')
+
     plt.subplot(1,3,2)
     cmap = matplotlib.cm.get_cmap('YlOrRd')
     normalize = matplotlib.colors.Normalize(vmin=min(kappa_na_arr),
@@ -444,12 +481,16 @@ if __name__ == '__main__':
     cbar = plt.colorbar(sm)
     cbar.set_label('Kappa')
     
-    plt.plot([0,4000],[0,4000], color = 'red')    
+    plt.plot([0,4000],[0,4000], color = 'red')  
+    plt.plot([0,4000], p_na([0,4000]), 'black')
+    plt.legend("R2 = %.3f"%r_val_na**2)
+
     plt.ylim((2000,3600))
     plt.xlim((2000,3600))
     plt.xlabel('SLA Manual')
     plt.ylabel('SLA Calculated')
     plt.title('Naegeli')
+
     plt.subplot(1,3,3)
     cmap = matplotlib.cm.get_cmap('YlGn')
     normalize = matplotlib.colors.Normalize(vmin=min(kappa_nai_arr),
@@ -461,7 +502,11 @@ if __name__ == '__main__':
     cbar = plt.colorbar(sm)
     cbar.set_label('Kappa')
     
-    plt.plot([0,4000],[0,4000], color = 'green')    
+    plt.plot([0,4000],[0,4000], color = 'green')  
+    plt.plot([0,4000], p_nai([0, 4000]), 'black')
+    plt.legend("R2 = %.3f"%r_val_nai**2)
+    
+    
     plt.ylim((2000,3600))
     plt.xlim((2000,3600)) 
     plt.xlabel('SLA Manual')
@@ -537,5 +582,53 @@ if __name__ == '__main__':
         'Cloud Cover', 'Snow Cover', 'Cohens Kappa', 7)
 
     #two_d_scatter
+    cloud_cover = np.asarray(cloud_cover_arr)
+    snow_cover = np.asarray(snow_cover_arr)
+    kappa_as = np.asarray(kappa_as_arr)
+    kappa_na = np.asarray(kappa_na_arr)
+    kappa_nai = np.asarray(kappa_nai_arr)
+    slope = np.asarray(slope_arr)
+    aspect = np.asarray(aspect_arr)
+    extent = np.asarray(extent_arr)
+    area = np.asarray(area_arr)
+    doy = np.asarray(doy_arr)
+    SLA_man = np.asarray(SLA_man_arr)
+    SLA_as = np.asarray(SLA_as_arr)
+    SLA_na = np.asarray(SLA_na_arr)
+    SLA_nai = np.asarray(SLA_nai_arr)
+
+
+    x = cloud_cover+0.1
+    y = snow_cover
+    z = kappa_as
+    print(snow_cover)
+    print(cloud_cover)
+    pickle.dump([
+        cloud_cover, 
+        snow_cover,
+        slope,
+        aspect,
+        area, 
+        extent,
+        doy,
+        kappa_as,
+        kappa_na,
+        kappa_nai,
+        SLA_man,
+        SLA_as,
+        SLA_na,
+        SLA_nai
+        ],open('variables.p', 'wb'))
+
+    
+    
+                     
+
+    #f, ax  = plt.subplots(1,2,sharex=True, sharey=True)
+    #ax[0].tripcolor(triang, z)
+    #ax[1].tripcolor(x,y,Z,20)
+    #ax[1].plot(x,y,'ko')
+    #ax[0].plot(x,y,'ko')
+
 
     plt.show()

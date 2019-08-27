@@ -95,17 +95,18 @@ if __name__ == '__main__':
                                                 end_date_var)
         print("Date = ", cfg.PARAMS['date'][0])
        # Download data for given glaciers for this date
-        tiles_downloaded = download_all_tiles(rgidf, tiles, use_tiles = True,
-                                              clear_cache = False,
-                                              clear_safe= False) 
-                                            # Function in utils
-        # move one day ahead
+#        tiles_downloaded = download_all_tiles(rgidf, tiles, use_tiles = True,
+#                                              clear_cache = False,
+#                                              clear_safe= False) 
+#                                            # Function in utils
+#        # move one day ahead
         start_date_var = start_date_var+timedelta(days=1)
         end_date_var = start_date_var+timedelta(days=1)
+        tiles_downloaded = 1
         if tiles_downloaded > 0:
             # Processing tasks: only execute when new files 
             # were downloaded!
-            task_list = [tasks.crop_satdata_to_glacier, # output:
+            task_list = [#tasks.crop_satdata_to_glacier, # output:
                                                         # sentinel.nc,
                                                         #solar_angles.nc
                                                         # dem_ts.nc
