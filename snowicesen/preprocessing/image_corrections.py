@@ -245,7 +245,7 @@ def cloud_masking(gdir):
 
     """
 
-    cloud_detector = S2PixelCloudDetector(threshold=0.6, average_over=1, dilation_size=2)
+    cloud_detector = S2PixelCloudDetector(threshold=0.4, average_over=2, dilation_size=2)
 
     try:
         sentinel = xr.open_dataset(gdir.get_filepath('ekstrand'))
@@ -386,6 +386,9 @@ def remove_sides(gdir):
         log.info('No data for this glacier and date - Abort remove_sides')
         return
     band_array = {}
+    _, i = np.unique(sentinel['time'], return_index=True)
+    sentinel = sentinel.isel(time=i)
+
     for band_id in sentinel['band'].values: # Read all bands as np arrays
         try:
             band_array[band_id] = sentinel.sel(
@@ -396,13 +399,23 @@ def remove_sides(gdir):
             # no data for this date & glacier
             log.info('No data for this glacier and date - Abort remove_sides')
             return
-
     # Calculate NDSI - normalized differencial snow index
     NDSI = (band_array['B03']-band_array['B11'])/\
            (band_array['B03']+band_array['B11'])
     # Apply glacier tresholding as described in Paul et al. 2016
     # for Sentinel Data
-    mask = (NDSI > 0.2)
+    print((band_array['B04']/band_array['B11'])[~np.isnan(band_array['B04']/band_array['B11'])].max(),
+            (band_array['B04']/band_array['B11'])[~np.isnan(band_array['B04']/band_array['B11'])].min())
+    mask = (NDSI > 0.2) #& \
+            #(band_array['B04']/band_array['B11'] > 0) & \
+            #(band_array['B02']/band_array['B04'] < 1.2) & \
+            #(band_array['B08']/band_array['B11'] < 1) & \
+            #(band_array['B08']/band_array['B11'] > 0)
+            #(band_array['B04']/band_array['B11'] < 20)#  & \
+            #
+
+
+                
     # Write into netCDF file again
     for band_id in sentinel['band'].values:
         band_array[band_id][mask == False] = 0
@@ -429,12 +442,35 @@ def remove_sides(gdir):
         cloud_mask['img_values'].loc[(
                      dict(band = band_id, time=cfg.PARAMS['date'][0]))] \
                     = band_array[band_id]*10000
+        _, i = np.unique(cloud_mask['time'], return_index=True)
+        cloud_mask = cloud_mask.isel(time=i)
 
-    print("Cloud cover: ", cloud_cover)
 
     # Write Updated DataSet to file
     cloud_mask.to_netcdf(gdir.get_filepath('sentinel_temp'), 'w')
     cloud_mask.close()
+
+    ### Plot Test:
+   # debris_removed = xr.open_dataset(gdir.get_filepath('sentinel_temp'))
+   # cloud_covered = xr.open_dataset(gdir.get_filepath('cloud_masked'))
+   # _, i = np.unique(cloud_covered['time'], return_index=True)
+   # cloud_covered = cloud_covered.isel(time=i)
+#
+#    print(cloud_covered.sel(time=cfg.PARAMS['date'][0], band = 'B08').img_values.values.shape)
+#    print(debris_removed.sel(time=cfg.PARAMS['date'][0], band = 'B08').img_values.values.shape)
+#    
+#    rgb_array_debris =np.dstack((debris_removed.sel(time=cfg.PARAMS['date'][0], band = 'B02').img_values.values,
+#               debris_removed.sel(time=cfg.PARAMS['date'][0], band = 'B03').img_values.values, 
+#               debris_removed.sel(time=cfg.PARAMS['date'][0], band = 'B04').img_values.values)) 
+#    rgb_array_cloud =np.dstack((cloud_covered.sel(time=cfg.PARAMS['date'][0], band = 'B02').img_values.values,
+#               cloud_covered.sel(time=cfg.PARAMS['date'][0], band = 'B03').img_values.values, 
+#               cloud_covered.sel(time=cfg.PARAMS['date'][0], band = 'B04').img_values.values)) 
+#    
+#    plt.subplot(1,2,1)
+#    plt.imshow(rgb_array_cloud/10000, vmin = 0, vmax =1)
+#    plt.subplot(1,2,2)
+#    plt.imshow(rgb_array_debris/10000, vmin = 0, vmax =1)
+#    plt.show()
 
            
 

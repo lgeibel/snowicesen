@@ -748,7 +748,29 @@ def max_albedo_slope_iterate(df):
             r_squared = get_r_squared(step_function_model, dem_avg, albedo_avg,
                     bound = ([0.1, dem_min + (height_max_slope- dem_min)/2, 0.3],
                         [0.3, dem_max - (dem_max - height_max_slope)/2, 0.45]))
-
+        
+      #  plt.subplot(2, 3, 4)
+      #  plt.figure()
+      #  plt.rcParams.update({"font.size":16})
+      #  try:
+      #      plt.plot(dem_avg, albedo_avg)
+      #  except UnboundLocalError:
+      #      # Glacier smaller than 25 meters
+      #      if delta_h == 0:
+      #          delta_h = 1
+      #      dem_avg = range(dem_min, dem_max, delta_h)
+      #      albedo_avg = range(dem_min, dem_max, delta_h)
+      #      # Take middle as a first guess:
+      #      alb_max_slope = (alb_max - alb_min) / 2
+      #      height_max_slope = (dem_max - dem_min) / 2
+      #      plt.plot(dem_avg, albedo_avg)
+      #  plt.axvline(height_max_slope-30, color='k', ls='--')
+      #  plt.xlabel("Altitude in m")
+      #  plt.ylabel("Albedo")
+      #  plt.title("Elevation Albedo Profile and estimate for SLA")
+      #  plt.grid(True)
+      #  plt.show()
+      
 
         return alb_max_slope, height_max_slope, r_squared
     except:
