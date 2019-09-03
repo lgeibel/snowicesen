@@ -1,7 +1,16 @@
 # Credentials file
 snowicesat.credentials
 SWISS/
+SWISS_NEW/
+SWISS_BACKUP/
+SWISS_SECOND_RUN/
+PLOTS/
+crampon/
+README.md
 data/
+docs/_build
+docs/_static
+docs/_template
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
